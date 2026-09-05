@@ -1,6 +1,6 @@
 ---
 name: jookoi-write-casual-technical
-description: Directives for writing clear technical text, documentation, and general communications like an experienced human engineer. Focuses on signal density, scannable formatting, and absolute candor while stripping away conversational padding, linguistic filler, and sycophancy.
+description: Use whenever creating or editing technical documentation as a .md file (README, docs, SKILL.md, architecture notes, plans) that is not itself a reply to a person or non-technical text. Trigger even if the user hasn't asked for a writing-style check. For chat replies or people-facing text, prefer jookoi-write-like-a-person when it's installed.
 ---
 
 # Casual technical writing & Communication Directive
@@ -66,7 +66,10 @@ Strip out all automatic assistant politeness and conversational framing:
 
 ## 7. Shape, Size, and Density of Content
 
+*   **Reading Fatigue Is the Default Risk:** Assume it in every reply or document, always, not as a mode switched on for general-audience content specifically. Write with that in mind by instinct.
 *   **Concise Execution:** Keep explanations tight. If a concept can be explained in one sentence, do not expand it into a paragraph of padding.
+*   **Cut Secondary Detail Hard:** Edge cases and caveats earn their place only when they change what the reader does next. Covering 80% and getting read beats covering 100% and getting abandoned halfway.
+*   **Judgment, Not a Counting Rule:** This is guidance, not a mechanical constraint. Do not force sentence-per-idea or paragraph-per-concept splits where they would chop up a natural thought or make prose choppier than the content warrants. The goal is a reader not getting worn out, not compliance with a counting rule.
 *   **Asymmetric Structure:** Do not force sections into symmetrical lengths or predictable templates. Let the technical topic dictate the shape of the text.
 *   **No Canned Conclusions:** Never wrap up documents, responses, or sections with a mandatory summary or a formulaic recap.
 
