@@ -1,0 +1,14 @@
+{
+  "name": "jookoi-ai-market",
+  "owner": {
+    "name": "Joosep Kõivistik",
+    "email": "equilerex@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "jookoi-dev",
+      "source": "./plugins/jookoi-dev",
+      "description": "Richer personal developer-tooling skills: paper-trail memory system, casual technical writing, Vue 3 no-build vibe-coding."
+    }
+  ]
+}
