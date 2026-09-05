@@ -1,0 +1,28 @@
+{
+  "//": "Merge into .gemini/hooks/hooks.json. Requires Gemini CLI v0.26.0+.",
+  "//blocking": "Whether AfterAgent honours a blocking decision is unverified. doc-gate.sh degrades to a written reminder surfaced by the next SessionStart.",
+  "hooks": {
+    "AfterAgent": [
+      {
+        "hooks": [
+          { "type": "command", "command": "sh .agents/skills/jookoi-paper-trail/hooks/doc-gate.sh" }
+        ]
+      }
+    ],
+    "PreCompress": [
+      {
+        "hooks": [
+          { "type": "command", "command": "sh .agents/skills/jookoi-paper-trail/hooks/preserve.sh" }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "compress|startup",
+        "hooks": [
+          { "type": "command", "command": "sh .agents/skills/jookoi-paper-trail/hooks/rehydrate.sh" }
+        ]
+      }
+    ]
+  }
+}

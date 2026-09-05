@@ -1,0 +1,34 @@
+{
+  "//": "Merge into .claude/settings.json (or ~/.claude/settings.json). Do not replace the file.",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "sh .agents/skills/jookoi-paper-trail/hooks/doc-gate.sh" }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "sh .agents/skills/jookoi-paper-trail/hooks/doc-gate.sh" }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          { "type": "command", "command": "sh .agents/skills/jookoi-paper-trail/hooks/preserve.sh" }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "compact|startup|resume",
+        "hooks": [
+          { "type": "command", "command": "sh .agents/skills/jookoi-paper-trail/hooks/rehydrate.sh" }
+        ]
+      }
+    ]
+  }
+}

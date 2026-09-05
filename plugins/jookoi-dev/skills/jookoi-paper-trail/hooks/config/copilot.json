@@ -1,0 +1,28 @@
+{
+  "//": "Merge into the repo's hooks.json for GitHub Copilot CLI.",
+  "//compaction": "Copilot CLI has no automatic compaction loop, so preserve.sh has no event to bind to here. It can still be run by hand before a long session ends.",
+  "//blocking": "Whether Stop/AgentStop honour a blocking decision is unverified. doc-gate.sh degrades to a written reminder surfaced by the next onSessionStart.",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "sh .agents/skills/jookoi-paper-trail/hooks/doc-gate.sh" }
+        ]
+      }
+    ],
+    "AgentStop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "sh .agents/skills/jookoi-paper-trail/hooks/doc-gate.sh" }
+        ]
+      }
+    ],
+    "onSessionStart": [
+      {
+        "hooks": [
+          { "type": "command", "command": "sh .agents/skills/jookoi-paper-trail/hooks/rehydrate.sh" }
+        ]
+      }
+    ]
+  }
+}
