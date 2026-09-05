@@ -1,4 +1,4 @@
-# ARCHITECTURE
+ # ARCHITECTURE
 <!-- Why the repo is shaped this way. Changed only when structure or key decisions change. See AGENTS.md. -->
 
 ## What this repo is

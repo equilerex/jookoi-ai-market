@@ -1,0 +1,11 @@
+{
+  "name": "jookoi-ai-market",
+  "private": true,
+  "scripts": {
+    "// paper-trail-status": "paper-trail status: TODO.md checklist counts, last flush date",
+    "paper-trail-status": "node -e \"require('child_process').execFileSync('node',[require('path').join(require('os').homedir(),'.agents/skills/jookoi-paper-trail/scripts/jookoi-paper-trail.js'),'status'],{stdio:'inherit'})\"",
+
+    "// paper-trail-check": "paper-trail check: validate _architecture/ managed files",
+    "paper-trail-check": "node -e \"require('child_process').execFileSync('node',[require('path').join(require('os').homedir(),'.agents/skills/jookoi-paper-trail/scripts/jookoi-paper-trail.js'),'check'],{stdio:'inherit'})\""
+  }
+}

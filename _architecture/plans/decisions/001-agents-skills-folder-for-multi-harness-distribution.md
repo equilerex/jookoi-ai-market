@@ -2,7 +2,7 @@
 
 Date: 2026-09-05
 
-Status: DECIDED
+Status: SUPERSEDED by [[002-claude-plugin-manifest-already-covers-copilot-and-gemini-ins]] — assumed Copilot CLI and Gemini CLI had no manifest/marketplace path of their own. Checked against live docs: Copilot CLI reads `.claude-plugin/marketplace.json`/`plugin.json` directly, and Gemini CLI installs `SKILL.md` skills straight from a git repo via `gemini skills install`. `.agents/skills/` and the sync script still exist, kept for a narrower reason (workspace-level discovery without an install step), not as a marketplace substitute.
 
 <!-- Status is one of: DECIDED | TRIAL | REJECTED | DEFERRED | SUPERSEDED
      A superseding decision gets its own number. The superseded file's status changes
