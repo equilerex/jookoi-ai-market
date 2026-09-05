@@ -10,22 +10,37 @@ plugins/
 └── jookoi-dev/                   # one broad plugin, not fragmented per-topic
     ├── .claude-plugin/plugin.json
     └── skills/
-        ├── jookoi-paper-trail/       # copied from baseline, baseline stays canonical
-        ├── jookoi-casual-writer/     # copied from baseline, baseline stays canonical
-        └── jookoi-vue3-vibe-code/    # copied from baseline, baseline stays canonical
+        ├── jookoi-paper-trail/            # copied from baseline, baseline stays canonical
+        ├── jookoi-write-like-a-person/    # audience-neutral tone, replies and people-facing text
+        ├── jookoi-write-casual-technical/ # engineer voice, technical .md documentation
+        └── jookoi-vue3-vibe-code/         # domain-specific, added directly here
+.agents/skills/                    # generated: verbatim copy of every skill above, for non-Claude harnesses
+scripts/sync-agents-skills.js      # regenerates .agents/skills/ from plugins/*/skills/
 ```
 
 `jookoi-dev` groups related capability areas (writing conventions, memory system, framework-specific vibe-coding) under one installable plugin. Split a capability into its own plugin only when it needs independent distribution, versioning, or audience — not by default.
 
 ## Install
 
+**Claude Code:**
+
 ```
 /plugin marketplace add <path-or-repo-url-to-this-repo>
 /plugin install jookoi-dev@jookoi-ai-market
 ```
 
+**Gemini CLI, VS Code Copilot, Codex, and other `SKILL.md`-reading harnesses:**
+
+`SKILL.md` (name + description + body) is an open cross-tool standard, not Claude-specific — only the marketplace/plugin manifest layer above is. Those tools discover skills via a plain, manifest-free `.agents/skills/<name>/` folder at repo root, which this repo generates:
+
+```
+node scripts/sync-agents-skills.js
+```
+
+Run it after adding, renaming, or removing a skill under `plugins/*/skills/`. It copies each skill folder verbatim into `.agents/skills/` and prunes anything no longer present in source. Point the other harness at this repo (or copy `.agents/skills/` wherever it looks) — no format conversion needed.
+
 ## Relationship to the baseline
 
 - `JooKoi-developer-stack` works standalone with no knowledge this repo exists.
-- The three skills currently here are copies, not moves — `jookoi-paper-trail` and `jookoi-casual-writer` remain baseline-universal skills whose source of truth is `JooKoi-developer-stack/my-global-setup/.agents/skills/`. Updates made there don't auto-propagate here; re-copy when a baseline skill changes and this plugin should pick it up.
+- Skills here are copies, not moves — source of truth for baseline-universal ones is `JooKoi-developer-stack/my-global-setup/.agents/skills/`. Updates made there don't auto-propagate here; re-copy when a baseline skill changes and this plugin should pick it up.
 - `jookoi-vue3-vibe-code` is domain-specific and was added directly here as this plugin's own content.
