@@ -148,7 +148,7 @@ function cmdBacklog(ctx, [title, body], opts) {
     refuse("backlog", `Status ${status} is outside ${BACKLOG_STATUS.join(" | ")}`);
   }
   const file = path.join(ctx.arch, "BACKLOG.md");
-  const text = readOrTemplate(file, "BACKLOG.md").replace(/\n+$/, "");
+  const text = readOrTemplate(file, "backlog.md").replace(/\n+$/, "");
   if (new RegExp(`^## ${title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "m").test(text)) {
     refuse(file, `an item titled "${title}" already exists -- edit it rather than adding a second`);
   }
@@ -262,13 +262,27 @@ function cmdStatus(ctx) {
 }
 
 function cmdStale(ctx) {
-  const out = execSync("git ls-files", { cwd: ctx.root, encoding: "utf8" }).split("\n");
-  const contexts = out.filter((f) => /(^|\/)(_jookoi-)?CONTEXT\.md$/.test(f));
+  let out;
+  try {
+    // -z: paths come back verbatim, so non-ASCII names are not quoted and escaped.
+    out = execSync("git ls-files -z", { cwd: ctx.root, encoding: "utf8" }).split("\0");
+  } catch {
+    refuse("stale", "needs a git repository -- git ls-files failed");
+  }
+  // Templates ship with the skill and carry `updated: YYYY-MM-DD` as a placeholder,
+  // so they can never match -- including them flags every vendored copy forever.
+  const contexts = out.filter(
+    (f) => /(^|\/)(_jookoi-)?CONTEXT\.md$/.test(f) && !/(^|\/)assets\/templates\//.test(f)
+  );
   if (contexts.length === 0) return ctx.report("no context files found -- nothing to check");
 
   let flagged = 0;
+  let checked = 0;
   contexts.forEach((rel) => {
     const abs = path.join(ctx.root, rel);
+    // git ls-files also lists staged-then-deleted entries; reading one aborts the whole run.
+    if (!fs.existsSync(abs)) return;
+    checked++;
     const m = fs.readFileSync(abs, "utf8").match(/^updated:\s*(\d{4}-\d{2}-\d{2})/m);
     if (!m) { ctx.report(`${rel}  NO updated: LINE`); flagged++; return; }
     const dir = path.dirname(rel);
@@ -282,7 +296,7 @@ function cmdStale(ctx) {
     }
   });
   ctx.report("");
-  ctx.report(flagged ? `${flagged} of ${contexts.length} flagged` : `${contexts.length} checked, none stale`);
+  ctx.report(flagged ? `${flagged} of ${checked} flagged` : `${checked} checked, none stale`);
 }
 
 function cmdCheck(ctx) {

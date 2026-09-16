@@ -12,6 +12,7 @@ Personal plugin marketplace, an optional extension layer on top of [`JooKoi-deve
 | [`jookoi-write-like-a-person`](plugins/jookoi-dev/skills/jookoi-write-like-a-person/SKILL.md) | Tone rules for replies and people-facing text: emails, messages, non-technical explanations. Audience-neutral. | Portable across projects, shareable without an engineer-specific voice baked in. |
 | [`jookoi-write-casual-technical`](plugins/jookoi-dev/skills/jookoi-write-casual-technical/SKILL.md) | Tone rules for technical `.md` documentation: README, architecture notes, another SKILL.md. Engineer voice. | Docs read like an engineer wrote them, not an assistant. |
 | [`jookoi-vue3-vibe-code`](plugins/jookoi-dev/skills/jookoi-vue3-vibe-code/SKILL.md) | Default architecture for a fast Vue 3 prototype: CDN-loaded, no build step, no `.vue` files. | Skips bundler setup for MVPs, dashboards, quick internal tools. |
+| [`jookoi-fastled`](plugins/jookoi-dev/skills/jookoi-fastled/SKILL.md) | Writing LED animations with FastLED that look good to a human, plus the filter chain for audio-reactive effects. See its [README](plugins/jookoi-dev/skills/jookoi-fastled/README.md) for provenance. | LED effect code generated without it is reliably ugly: full white, every pixel at saturation 255, `delay()` in the loop. None of those are API errors, so nothing catches them. |
 
 ## Structure
 
@@ -24,7 +25,8 @@ plugins/
         ├── jookoi-paper-trail/            # copied from baseline, baseline stays canonical
         ├── jookoi-write-like-a-person/    # audience-neutral tone, replies and people-facing text
         ├── jookoi-write-casual-technical/ # engineer voice, technical .md documentation
-        └── jookoi-vue3-vibe-code/         # domain-specific, added directly here
+        ├── jookoi-vue3-vibe-code/         # for fast prototypes with html, js and cdn.
+        └── jookoi-fastled/                # Led animation framework usage instructions to build aestetically pleasing effects
 ```
 
 `jookoi-dev` groups related capability areas (writing conventions, memory system, framework-specific vibe-coding) under one installable plugin. A capability gets split into its own plugin only when it needs independent distribution, versioning, or audience, not by default.
@@ -56,6 +58,7 @@ gemini skills install https://github.com/equilerex/jookoi-ai-market --path plugi
 gemini skills install https://github.com/equilerex/jookoi-ai-market --path plugins/jookoi-dev/skills/jookoi-write-like-a-person --consent
 gemini skills install https://github.com/equilerex/jookoi-ai-market --path plugins/jookoi-dev/skills/jookoi-write-casual-technical --consent
 gemini skills install https://github.com/equilerex/jookoi-ai-market --path plugins/jookoi-dev/skills/jookoi-vue3-vibe-code --consent
+gemini skills install https://github.com/equilerex/jookoi-ai-market --path plugins/jookoi-dev/skills/jookoi-fastled --consent
 ```
 
 **Any other `SKILL.md`-reading harness:**
@@ -66,4 +69,4 @@ gemini skills install https://github.com/equilerex/jookoi-ai-market --path plugi
 
 - `JooKoi-developer-stack` works standalone, with no knowledge this repo exists.
 - Skills here are copies, not moves. Source of truth for baseline-universal ones is `JooKoi-developer-stack/my-global-setup/.agents/skills/`. Updates made there don't auto-propagate here, re-copy by hand when a baseline skill changes and this plugin should pick it up.
-- `jookoi-vue3-vibe-code` is domain-specific, added directly here as this plugin's own content.
+- `jookoi-vue3-vibe-code` and `jookoi-fastled` are domain-specific, added directly here as this plugin's own content.
