@@ -1,11 +1,11 @@
 {
   "name": "jookoi-dev",
-  "version": "0.2.0",
-  "description": "Personal richer developer-tooling ecosystem: paper-trail memory, casual writing conventions, Vue 3 no-build vibe-coding, LED animation with FastLED, and future domain-specific skills.",
+  "version": "0.3.0",
+  "description": "Personal richer developer-tooling ecosystem: paper-trail memory, casual writing conventions, Vue 3 no-build vibe-coding, LED animation with FastLED, Angular performance auditing, and future domain-specific skills.",
   "author": {
     "name": "Joosep Kõivistik",
     "email": "equilerex@gmail.com"
   },
   "license": "UNLICENSED",
-  "keywords": ["personal", "skills", "vue", "writing", "memory", "fastled", "led", "esp32"]
+  "keywords": ["personal", "skills", "vue", "writing", "memory", "fastled", "led", "esp32", "angular", "performance"]
 }
