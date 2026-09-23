@@ -1,6 +1,6 @@
 # File formats — canonical spec
 
-Every rule here is enforced by `scripts/jookoi-paper-trail.js`. This document is the specification the script implements and the fallback when Node is unavailable.
+Rules enforced by `scripts/jookoi-paper-trail.js`. Item storage is specified separately in `references/store-format.md`.
 
 Paths are given for the shared layer. The private layer is identical with the `_jookoi-` prefix: `_jookoi-architecture/`, `_jookoi-CONTEXT.md`. Both layers may exist side by side.
 
@@ -8,25 +8,15 @@ Paths are given for the shared layer. The private layer is identical with the `_
 
 ## Universal rules
 
-**Entry grammar.** Every dated entry, in every file that has them:
-
-```markdown
-## YYYY-MM-DD — Title
-```
-
-Em dash `—`, spaced. Title is a sentence fragment, no trailing period. Body follows after one blank line: prose paragraphs, optional bullets. No other heading level is used for entries; `###` is permitted inside an entry body.
-
-This grammar is identical in `archive/YYYY-MM.md`, the sole place dated entries land. That is what makes flush a mechanical append.
-
-**Ordering.** Newest first in every dated file.
-
 **Policy comment.** Line 2 of every managed file is an HTML comment stating what the file is and who maintains it. It is the only thing a cold agent has to identify the file from its contents alone.
 
-**Dates.** `YYYY-MM-DD`, always. Never relative ("yesterday", "last session"). The script supplies the date; never hand-write one.
+**Dates and timestamps.** Two formats, by where they sit:
+- **Filenames and JSON keys** (`plans/YYYY-MM-DD-topic.md`, `archive/items-YYYY-MM.json`, `--before=`/`--since=` flags): `YYYY-MM-DD`, always — sorts correctly as plain text.
+- **Prose content** (`Date:`, `Session:`, `updated:`, and `items.json`'s `ts_*` fields): a full timestamp, not a bare date — same-day entries need ordering. In MD prose, European order: `DD-MM-YYYY HH:MM`, local time. In `items.json`, full ISO 8601 UTC (`references/store-format.md`).
+
+Never relative ("yesterday", "last session"). The script supplies every date and timestamp; never hand-write one.
 
 **Line width.** No hard wrap. One paragraph is one line.
-
-**Duplicate detection.** An entry whose body matches an existing entry in the same file at ≥95% is rejected, not appended.
 
 **Wiped names.** Once something is removed or rejected, live docs stop naming it. The decision record holds the name and the reasoning, and that is where a reader goes. Name it outside that record only when the reader has to act on it: they might still have it installed, they will hit it in someone else's setup, or the reason it failed is a rule that now binds other choices. "We considered X" is not a lesson.
 
@@ -34,109 +24,37 @@ This grammar is identical in `archive/YYYY-MM.md`, the sole place dated entries 
 
 ## `_architecture/TODO.md`
 
-The live working set. Two blocks with different behaviours; both always present.
+Only the `## Context` header. The item list lives in `items.json` (`references/store-format.md`).
 
 ```markdown
 # TODO
-<!-- Live working set. `jookoi-paper-trail flush` archives it and resets it. See AGENTS.md. -->
+<!-- Context header only, rewritten wholesale when stale. Items live in items.json, owned by `jookoi-paper-trail`. See AGENTS.md. -->
 
 ## Context
 
 Where things stand right now and why. Rewritten in place, never appended to.
-
-## Checklist
-
-- [ ] An open item.
-- [x] A finished item, left in place until flush.
 ```
 
-**Context** — rewritten wholesale, in present tense, whenever it goes stale. Answers "what does a cold session need to know to not re-derive it". Short — a handful of lines, not a running log. Never dated, never accumulates, never contains a history of its own prior states.
+**Context** is rewritten wholesale, in present tense, whenever it goes stale. It answers "what does a cold session need to know to not re-derive it". Short, a handful of lines. Never dated, never accumulates, never contains a history of its own prior states.
 
-**Checklist** — `- [ ]` / `- [x]`, hand-maintained directly with a normal edit, the same way `Context` always was. Mixes done, in-progress and pending items on purpose. Persists across sessions untouched — there is no per-session or per-turn obligation to clear it. It empties only when `flush` runs, and only after anything still relevant has been moved to `BACKLOG.md` first.
-
-**Cap:** none. Nothing rolls off on its own; it lives until a flush.
-
-**Does not go in:** finished-work history once it has actually been archived (that is `archive/`, reached by flush); anything that belongs to one folder (`CONTEXT.md`).
+**Does not go in:** work items (`items.json`); anything that belongs to one folder (`CONTEXT.md`).
 
 ---
 
-## `_architecture/archive/YYYY-MM.md`
+## `_architecture/items.json` and `archive/items-YYYY-MM.json`
 
-Flushed `TODO.md` snapshots. Written only by `flush`. Human-facing record, not a working file — an AI reads it only when history is explicitly requested or genuinely needed, never by default.
-
-```markdown
-# Archive — YYYY-MM
-<!-- Written by `jookoi-paper-trail flush`. Do not read unless history is explicitly requested. See AGENTS.md. -->
-
-## YYYY-MM-DD — Title
-
-Whatever TODO.md held at flush time: its Context and Checklist, verbatim.
-```
-
-The month in the filename is the month the flush ran. A flush on the same date and title as an existing entry appends to it rather than creating a second one.
-
-**Cap:** none.
-
-**Does not go in:** anything not reached via `flush`.
-
----
-
-## `_architecture/archive/index.md`
-
-Readable without opening any archived file.
-
-```markdown
-# Archive index
-<!-- Readable without opening archived files. jookoi-paper-trail maintains this. See AGENTS.md. -->
-
-- **`YYYY-MM.md`** — YYYY-MM-DD to YYYY-MM-DD: one-line summary of what the file covers.
-```
-
-One pointer per archive file, newest first. The date range is the span of entries actually in that file, recomputed on every rotation.
-
-**Does not go in:** prose outside the pointer list. Rotation status is `jookoi-paper-trail status`, not a sentence here.
-
----
-
-## `_architecture/BACKLOG.md`
-
-Logged, not yet scoped or sequenced.
-
-```markdown
-# Backlog — logged, not yet scoped
-<!-- Deliberately unordered. Pull an item into TODO.md's checklist when it gets a real slot. See AGENTS.md. -->
-
-## Item title
-
-Status: OPEN
-
-Body.
-```
-
-`Status:` is one token from a closed set, on its own line under the heading:
-
-| Token | Means |
-|---|---|
-| `OPEN` | Logged, nothing decided |
-| `DESIGNED` | Design settled, not built |
-| `BLOCKED` | Waiting on something named in the body |
-| `MOVED` | Now lives elsewhere; body says where |
-| `DROPPED` | Deliberately not doing it; body says why |
-
-Headings are topic titles, undated and unnumbered. Status never appears in the heading.
-
-**Does not go in:** work already picked up (`TODO.md`'s checklist); anything already started.
+The working-set store and its monthly archive. Script-written only. Full spec: `references/store-format.md`. Archive files are not read unless history is asked for; `find` searches them.
 
 ---
 
 ## `_architecture/plans/YYYY-MM-DD-topic.md`
 
-One file per planning session. Kept permanently, never capped, never archived.
+One file per planning session. Kept permanently, never capped, never deleted.
 
 ```markdown
 # Title
 
-Session: YYYY-MM-DD. Status: <one line>.
+Session: DD-MM-YYYY HH:MM. Status: <one line>.
 
 ## Context
 ## <the design, in whatever sections it needs>
@@ -146,7 +64,9 @@ Session: YYYY-MM-DD. Status: <one line>.
 
 Only `Context` and the `Session:` line are required. `Implementation deviations` is added when the build diverges from what the plan said, and is the section future reads reconcile against.
 
-**Does not go in:** running status (that drifts — it belongs in `TODO.md`); anything that will need editing as work proceeds, other than the deviations section.
+**Does not go in:** running status (that drifts — it belongs in the store); anything that will need editing as work proceeds, other than the deviations section.
+
+**Once the build it describes is done**, move the file to `plans/implemented/YYYY-MM-DD-topic.md` — same name, same content, no rewrite. This is a plain move, not archiving: the file stays permanently and is still the record `Implementation deviations` reconciles against, it just stops sitting in the folder a cold session scans by default. `plans/` root is for plans still open or in flight; `plans/implemented/` is read only when a plan is named explicitly. Decisions (`plans/decisions/`) don't move — they're already compact and dated, not the source of the noise.
 
 ---
 
@@ -157,7 +77,7 @@ One call, with its reasoning. `NNN` is zero-padded, allocated by `jookoi-paper-t
 ```markdown
 # Decision NNN — Title
 
-Date: YYYY-MM-DD
+Date: DD-MM-YYYY HH:MM
 
 Status: DECIDED
 
@@ -180,7 +100,7 @@ Feature-level context, at feature-area and component-folder granularity.
 
 ```markdown
 # CONTEXT — folder-or-feature-name
-updated: YYYY-MM-DD
+updated: DD-MM-YYYY HH:MM
 
 ## What this is
 
@@ -224,9 +144,8 @@ No fixed section set, no cap, no dated entries. Deep-dive detail goes to a linke
 The script refuses and reports rather than guessing when:
 
 - A managed file's line 1 heading does not match its expected title.
-- An entry heading does not parse as `## YYYY-MM-DD — Title`.
-- `TODO.md` is missing either the `## Context` or `## Checklist` heading.
-- A `Status:` value is outside its file's closed vocabulary.
+- `items.json` is not valid JSON, or an item has a status outside `now | parked | done | dropped`.
+- `TODO.md` is missing the `## Context` heading.
 - A `CONTEXT.md` lacks any of its four sections.
 
 A refusal names the file, the line, and what was expected. It never rewrites the file to fix it — that is the model's call, since a malformed file usually means content was placed by hand for a reason.

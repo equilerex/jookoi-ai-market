@@ -1,6 +1,6 @@
 # jookoi-angular-performance
 
-An LLM skill for auditing and fixing performance in existing Angular apps.
+An LLM skill that audits and fixes performance in existing Angular apps, and works as a knowledge base for the harder cases: planning bigger changes, choosing between options, setting up measurement, and finding the right docs.
 
 ## Why
 
@@ -29,7 +29,7 @@ Angular moved to a 12-month major cadence at v22, so v23 is expected around mid-
 - `@defer` and hydrate trigger set, incremental hydration default
 - `NgOptimizedImage` behavior and loaders
 - animations package status
-- `stats.json` format and budget types
+- stats metafile name and budget types and defaults
 - `angular-eslint` rule names
 
 Then update `references/version-notes.md`, this table, and `BASELINE_MAJOR`.
@@ -38,16 +38,33 @@ Then update `references/version-notes.md`, this table, and `BASELINE_MAJOR`.
 
 | File | Covers |
 |---|---|
-| `SKILL.md` | Audit workflow, symptom → fix table, ranked fixes, pitfalls a regex can't see |
-| `scripts/audit.mjs` | Zero-dependency static audit: budgets, builder, zone mode, templates, images, lazy routes, heavy imports, SSR wiring, staleness |
-| `references/change-detection.md` | OnPush, signals, zoneless migration order, zone pollution, template cost, INP |
-| `references/loading.md` | Lazy routes, `@defer`, preloading, images, fonts, SSR/hydration, CWV |
-| `references/measuring.md` | DevTools, bundle analysis, budgets, Lighthouse CI, lint gates |
-| `references/version-notes.md` | Per-major changes v15-v22 and APIs to double-check |
+| `SKILL.md` | Working rules, request routing, quick audit/fix workflow, symptom table, ranked quick fixes, pitfalls |
+| `scripts/audit.mjs` | Zero-dependency static audit, read-only |
+| `scripts/route-cost.mjs` | Per-route cost of lazy chunks from `stats.json`, read-only |
+| `scripts/chunk-packages.mjs` | Per-package breakdown of a chunk or the initial set, read-only |
+| `references/chunk-size.md` | Bundle and lazy-chunk size |
+| `references/loading.md` | Lazy routes, `@defer`, CWV mapping |
+| `references/preloading.md` | Router preloading and strategies |
+| `references/assets-and-third-parties.md` | Images, fonts, CSS, third-party scripts |
+| `references/change-detection.md` | OnPush, signals, zoneless |
+| `references/runtime.md` | Profiling, INP, RxJS, forms, lists, memory |
+| `references/data-loading.md` | Waterfalls, resolvers, resources, transfer cache |
+| `references/ssr.md` | SSR, hydration, when not to use it |
+| `references/build-and-deploy.md` | Builder options, defaults, caching, service worker, CI gates |
+| `references/measuring.md` | Manual measuring |
+| `references/measurement-automation.md` | Repeatable measurement, baselines, comparison |
+| `references/docs-map.md` | Canonical docs, dead URLs |
+| `references/version-notes.md` | Per-major changes |
+
+Research behind the references: `_architecture/plans/angular-*-research.md` and `angular-gap-fill-*.md`. Claims are tagged verified or unverified there, and each reference ends with its unverified list.
+
+## Changelog
+
+- 2026-09-22: first real-run feedback (`_architecture/plans/angular-skill-improvement-brief.md`). `SKILL.md`: open-the-reference rule, v22 traps, package-manager check before installs, landing route and shell as a ranked fix. `chunk-size.md`: route cost, eager imports, UI-kit wrapper pattern, budget sizing (raw vs transferred, derivation rule, `anyScript`, `anyComponentStyle`). `build-and-deploy.md`: `stats.json` facts, failed builds write nothing. `loading.md` and `ssr.md`: above-the-fold check, prerendered `@defer`, redirect plus `**` failure. `measurement-automation.md`: default setup and traps. New `route-cost.mjs` and `chunk-packages.mjs`. `audit.mjs`: `track item` downgraded to info, leads for eager `component:` routes and large source files in initial entries. Not tested: `bundle` and `anyScript` budgets on lazy chunks in v22 (see the unverified lists).
 
 ## What it isn't
 
-Not a general Angular guide. Code conventions, new features, and scaffolding belong to the official `angular-developer` and `angular-new-app` skills (`npx skills add https://github.com/angular/skills`). This one only deals with speed.
+Not a general Angular guide. It does not install tools or change code without being asked. Code conventions, new features, and scaffolding belong to the official `angular-developer` and `angular-new-app` skills (`npx skills add https://github.com/angular/skills`). This one only deals with speed.
 
 ## License
 

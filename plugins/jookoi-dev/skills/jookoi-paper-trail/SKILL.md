@@ -1,21 +1,26 @@
 ---
 name: jookoi-paper-trail
-description: Writes anything worth remembering into the repo's own files instead of losing it to the transcript — folder-level CONTEXT.md, and the project-level TODO.md / BACKLOG.md / ARCHITECTURE.md / plans / decisions / archive pipeline. Use this whenever something durable just happened or is about to be written down: a decision got made or rejected, a design or planning session wrapped, a change made an existing doc wrong, real work started in a folder with no context file, an item is worth logging for later, or a chunk of work finished and the notes need archiving. Trigger it on phrasings like "write this down", "note that", "update the docs", "log it for later", "we settled on X", "docs are stale", "we're done with this chunk" — the user names the fact, not the file, so match on the intent rather than on a filename.
+description: Manage repo context and working memory. CONTEXT.md, TODO.md, ARCHITECTURE.md, plans, decisions, archive. Write things down before they're lost.
+metadata:
+  last_updated: 2026-09-23
+  author: Joosep Kõivistik
+  repository: https://github.com/equilerex/jookoi-ai-market
 ---
 
 # jookoi-paper-trail
 
-Every repo keeps its own written memory: `CONTEXT.md` beside the code it describes, and `_architecture/` at the root holding `TODO.md` (the live working set), `BACKLOG.md`, `ARCHITECTURE.md`, `plans/`, and `archive/`. This skill decides what lands where and keeps the formats intact.
+Every repo keeps its own written memory: `CONTEXT.md` beside the code it describes, and `_architecture/` at the root holding `items.json` (the live working set: now, parked, done, dropped items), `TODO.md` (a Context header only), `ARCHITECTURE.md`, `plans/`, and `archive/`. This skill decides what lands where and keeps the formats intact.
 
-Two things move information through this system: a **script** that owns every mechanical decision, and **you**, who own what happened and where it belongs. Don't do by hand what the script does — that is where the format drifts.
+Two things move information through this system: a **script** that owns every mechanical decision, and **you**, who own what happened and where it belongs. Items are written only through the script, by ID, with no prior read: never open or hand-edit `items.json`.
 
 ## When this runs
 
 - **After a change that makes an existing context file wrong.** Immediately, before continuing the original task — a doc that is confidently wrong costs more than one that is absent.
 - **First real work in a folder with no context file.** Create one. Never bulk-generate across a tree: a context file earns its place the first time real work happens there, and mass-produced ones are wrong on arrival.
-- **When a chunk of work finishes, or the checklist runs dry**: `flush`. On judgement only — never on a cadence, never because a hook asked; the `Stop` gate only ever asks for a `TODO.md` update. Flush archives `TODO.md` whole and wipes it, so move anything still live to `BACKLOG.md` *first*. Mechanics: `references/pipeline.md`.
-- **Every session in between**: edit `TODO.md` directly as things happen — check items off, add new ones, rewrite `## Context` when it goes stale. `TODO.md` sitting untouched across sessions is the steady state, not a bug.
-- **`BACKLOG.md` has items and `TODO.md`'s checklist is thin.** Pull one in and scope it into a checklist line.
+- **Session start**: run `list` (bounded: `now` items plus the 3 latest done). `list --status=parked` when the `now` list is thin and you want something to pull in with `start`.
+- **As things happen**: `add`, `done`, `edit`, `park`, `drop` by ID. `find "<text>"` before `add` to avoid duplicates. Rewrite `TODO.md`'s `## Context` when it goes stale. Untouched across sessions is the steady state.
+- **When a chunk of work finishes, or `now` runs dry**: suggest a flush, following `references/flush-prompt.md`. Judgement only, never a cadence or a hook. Flush only moves `done` and `dropped` items to the archive, so nothing live is at risk and deferring it costs nothing.
+- **A plan's build finishes.** Move `plans/YYYY-MM-DD-topic.md` to `plans/implemented/YYYY-MM-DD-topic.md`, unchanged, once its `Status:` line says done. Keeps `plans/` root to what's still open, so a cold session isn't tempted to read finished plans it doesn't need. Details: `references/file-formats.md`.
 
 ## Routing
 
@@ -27,8 +32,7 @@ Top to bottom, first match wins.
 | A call that was made — picked, rejected, deferred — with reasoning that will be asked about later? | `plans/decisions/NNN-slug.md` (`new-decision`) |
 | The record of a design or planning session, multi-part, one sitting? | `plans/YYYY-MM-DD-topic.md` (`new-plan`) |
 | Durable and structural — why the repo is shaped this way? | `ARCHITECTURE.md` |
-| Work worth tracking now — done, in progress, or picked up next? | `TODO.md`'s `## Checklist` |
-| Intended work, not yet scoped or ordered? | `BACKLOG.md` (`backlog`) |
+| Work item: tracked now, or logged for later? | The store: `add` (`--status=parked` if not started) |
 | A standing fact a cold session needs and would otherwise re-derive? | `TODO.md`'s `## Context` — rewrite wholesale, don't append |
 
 No match: ask. Don't pick the closest bucket — wrong-bucket content is worse than absent content, because it gets found later and trusted.
@@ -46,27 +50,31 @@ The test is audience, not secrecy. **Shared** (no prefix, committed) is what sta
 
 ## The script
 
-Run it from inside the target repo — it locates `_architecture/` with `git rev-parse --show-toplevel` against the current directory, so running it from the skill folder writes to the wrong place. `--root <path>` overrides.
+Run it from inside the target repo — it finds the root with `git rev-parse --show-toplevel`, else by walking up to a folder with `_architecture/`, so running it from the skill folder writes to the wrong place. `--root <path>` overrides.
 
 ```
 node ~/.agents/skills/jookoi-paper-trail/scripts/jookoi-paper-trail.js <command> [args] [--root <path>] [--private] [--dry-run]
 
-backlog "<title>" "<body>" [--status OPEN]
-flush [--title "<t>"]              TODO.md -> archive/, resets TODO.md to template
-status                             checklist counts, last flush date, marker state
-stale                              updated: vs each folder's last commit
-check                              validate managed files against the spec
-new-decision "<title>"             next free NNN from template
-new-plan "<topic>"                 dated plan file from template
+list [--status=S] [--stale=N]      now items + 3 latest done; or one status
+find "<text>"  show <id>  count    search everything, one item, counts
+add "<md>" [--status=parked] [--after=ID|--before=ID|--first|--last]
+done|park|start|drop <id>          status changes
+edit <id> "<md>"  move <id> <placement>
+flush [--before=DATE]              done+dropped -> archive/items-YYYY-MM.json
+render                             store as markdown, for a human
+stale [days]  check                stale items and context files; validate
+new-decision "<title>"  new-plan "<topic>"
 ```
 
-It owns dating, heading grammar, newest-first insertion, duplicate rejection, archive-index pointers, `NNN` allocation, and template instantiation. It refuses rather than guesses: a file that doesn't match its expected shape is reported with a line number and left untouched. Fix by hand, then re-run.
+Item format, IDs, placement and errors: `references/store-format.md`.
 
-No Node available? `references/file-formats.md` specifies every rule the script enforces, and `references/pipeline.md` has the manual order.
+It owns IDs, dating, priorities, archiving, `NNN` allocation, and template instantiation. It refuses rather than guesses: an unknown ID or malformed store is reported and nothing is written.
+
+No Node available? `references/pipeline.md` has the manual fallback.
 
 ## Hard rules
 
-- **Never regenerate a file to change one section.** Target the heading, rewrite to the next one, leave every other byte alone. Regeneration silently drops what this session didn't happen to be thinking about, and review can't catch it because the whole file shows as changed. (`TODO.md` is the exception in both directions — see `references/operations.md`.)
+- **Never regenerate a prose file to change one section.** Target the heading, rewrite to the next one, leave every other byte alone. (`TODO.md`'s Context is the exception: rewritten wholesale — see `references/operations.md`.)
 - **Never write a secret.** API key, token, credential, connection string — flag it, don't record it.
 - **Never leave a placeholder.** `TBD` / `TODO` / `[...]` — fill it or drop the section.
 - **Never restate what the code shows**, document parameters, log a changelog, or explain framework behaviour. If removing a line wouldn't slow a newcomer down, cut it.
@@ -78,9 +86,11 @@ No Node available? `references/file-formats.md` specifies every rule the script 
 
 | Load when | File |
 |---|---|
-| Writing or validating any managed file | `references/file-formats.md` |
-| Flushing, recovering a dead session, handling compaction | `references/pipeline.md` |
+| Writing or validating a prose file (CONTEXT, plan, decision) | `references/file-formats.md` |
+| Item fields, commands, placement | `references/store-format.md` |
+| Flushing | `references/flush-prompt.md` |
+| Recovering a dead session, handling compaction | `references/pipeline.md` |
 | Finding, removing, staleness, section-surgical edits | `references/operations.md` |
 | Wiring the session-end gate on any harness | `references/hooks.md` |
-| Creating a file that doesn't exist yet | `assets/templates/<type>.md` (`todo.md` for `TODO.md`) |
+| Creating a file that doesn't exist yet | `assets/templates/<type>.md` |
 | Any mechanical operation | `scripts/jookoi-paper-trail.js` |

@@ -1,7 +1,11 @@
 ---
 name: jookoi-create-skill
-description: Create or adapt a personal, cross-harness agent skill when a reusable workflow belongs in .agents/skills, especially when preserving an existing skill while removing host-specific assumptions.
+description: Create or adapt llm skills Portable, reusable, host-agnostic workflows for creating SKILL.md
 license: Apache-2.0
+metadata:
+  last_updated: 2026-09-23
+  author: Joosep Kõivistik
+  repository: https://github.com/equilerex/jookoi-ai-market
 ---
 
 # Personal skill creator
@@ -38,11 +42,17 @@ description: Use when a specific recurring task needs this workflow.
 Instructions that let the agent perform the task.
 ```
 
-The description is for selection: say when the skill applies and where its boundary is. Put steps, examples, and edge cases in the body. Use concrete verbs and the user's own terminology. Explain a constraint when its reason affects judgment. Cut repeated background and generic advice.
+The description is for selection: say when the skill applies and where its boundary is. Keep it as minimal as possible: one sentence, maximum two. Get straight to the point without conversational padding or sounding like a human. It is injected into LLM discovery prompts, so every extra word costs tokens across all conversations. Never include angle brackets (< or >) in name or description.
+
+Frontmatter constraints:
+- `name`: 1 to 64 characters, lowercase alphanumeric and single hyphens (`^[a-z0-9]+(-[a-z0-9]+)*$`), matching the directory name. No consecutive hyphens (`--`). Never use reserved words `claude` or `anthropic`. The directory name cannot be `synced`.
+- Allowed top-level fields: `name`, `description`, `license`, `compatibility`, `metadata`. Never invent custom top-level keys.
+- Author-agnostic: instructions here remain author-agnostic. Do not hardcode specific personal author names or prefixes into the skill. Instead, discover naming conventions (such as personal prefixes) and author details from the target repository's `AGENTS.md`, environment instructions, or git config.
+- Non-LLM metadata: put credit, author, repository URL, version, and date inside the `metadata:` dictionary. Claude Code leaves `metadata:` out of initial tool discovery prompts, preserving tokens.
 
 Keep `SKILL.md` usable on its own. Put long or rarely needed material in `references/`, reusable mechanical helpers in `scripts/`, and output templates in `assets/`. Link each resource at the point where it becomes useful. Do not create empty scaffolding or require every resource to load on every invocation.
 
-When a host needs extra metadata, add it as an optional adapter without making the portable core depend on it. A host's slash command, skill picker, implicit triggering, and policy files are separate behaviors; verify each one you promise. Do not force a host-only frontmatter key into the shared file if another host rejects it.
+When a host needs extra metadata, add it as an optional adapter without making the portable core depend on it. A host's slash command, skill picker, implicit triggering, and policy files are separate behaviors, so verify each one you promise. Do not force a host-only frontmatter key into the shared file if another host rejects it.
 
 ## 3. Verify the draft
 

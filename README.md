@@ -9,6 +9,7 @@ Personal plugin marketplace, an optional extension layer on top of [`JooKoi-deve
 | Skill | What | Why |
 |---|---|---|
 | [`jookoi-paper-trail`](https://github.com/equilerex/JooKoi-developer-stack/tree/main/my-global-setup/.agents/skills/jookoi-paper-trail) | Writes decisions, plans, and open work into a repo's own `_architecture/` files instead of the chat transcript. Full CONTEXT.md / TODO.md / BACKLOG.md / decisions / archive pipeline documented at the link. | Nothing durable gets lost when a session ends or gets compacted. |
+| [`jookoi-create-skill`](plugins/jookoi-dev/skills/jookoi-create-skill/SKILL.md) | Create or adapt personal cross-harness skills for `.agents/skills`, removing host assumptions, packaging, and syncing to targets. | New skills start portable, follow established structure, and get installed or linked across environments without ad hoc manual copies. |
 | [`jookoi-write-like-a-person`](plugins/jookoi-dev/skills/jookoi-write-like-a-person/SKILL.md) | Tone rules for replies and people-facing text: emails, messages, non-technical explanations. Audience-neutral. | Portable across projects, shareable without an engineer-specific voice baked in. |
 | [`jookoi-write-casual-technical`](plugins/jookoi-dev/skills/jookoi-write-casual-technical/SKILL.md) | Tone rules for technical `.md` documentation: README, architecture notes, another SKILL.md. Engineer voice. | Docs read like an engineer wrote them, not an assistant. |
 | [`jookoi-vue3-vibe-code`](plugins/jookoi-dev/skills/jookoi-vue3-vibe-code/SKILL.md) | Default architecture for a fast Vue 3 prototype: CDN-loaded, no build step, no `.vue` files. | Skips bundler setup for MVPs, dashboards, quick internal tools. |
@@ -24,6 +25,7 @@ plugins/
     ├── .claude-plugin/plugin.json
     └── skills/
         ├── jookoi-paper-trail/            # copied from baseline, baseline stays canonical
+        ├── jookoi-create-skill/           # copied from baseline, portable skill creation workflow
         ├── jookoi-write-like-a-person/    # audience-neutral tone, replies and people-facing text
         ├── jookoi-write-casual-technical/ # engineer voice, technical .md documentation
         ├── jookoi-vue3-vibe-code/         # for fast prototypes with html, js and cdn.
@@ -57,6 +59,7 @@ Installs `SKILL.md` skills straight from a git repo, one at a time, no packaging
 
 ```
 gemini skills install https://github.com/equilerex/jookoi-ai-market --path plugins/jookoi-dev/skills/jookoi-paper-trail --consent
+gemini skills install https://github.com/equilerex/jookoi-ai-market --path plugins/jookoi-dev/skills/jookoi-create-skill --consent
 gemini skills install https://github.com/equilerex/jookoi-ai-market --path plugins/jookoi-dev/skills/jookoi-write-like-a-person --consent
 gemini skills install https://github.com/equilerex/jookoi-ai-market --path plugins/jookoi-dev/skills/jookoi-write-casual-technical --consent
 gemini skills install https://github.com/equilerex/jookoi-ai-market --path plugins/jookoi-dev/skills/jookoi-vue3-vibe-code --consent
@@ -71,5 +74,5 @@ gemini skills install https://github.com/equilerex/jookoi-ai-market --path plugi
 ## Relationship to the baseline
 
 - `JooKoi-developer-stack` works standalone, with no knowledge this repo exists.
-- Skills here are copies, not moves. Source of truth for baseline-universal ones is `JooKoi-developer-stack/my-global-setup/.agents/skills/`. Updates made there don't auto-propagate here, re-copy by hand when a baseline skill changes and this plugin should pick it up.
+- Skills here are copies, not moves. Source of truth for baseline-universal ones (`jookoi-paper-trail`, `jookoi-create-skill`, `jookoi-write-like-a-person`, `jookoi-write-casual-technical`) is `JooKoi-developer-stack/my-global-setup/.agents/skills/`. Updates made there don't auto-propagate here, re-copy by hand when a baseline skill changes and this plugin should pick it up.
 - `jookoi-vue3-vibe-code`, `jookoi-fastled`, and `jookoi-angular-performance` are domain-specific, added directly here as this plugin's own content.

@@ -1,6 +1,10 @@
 ---
 name: jookoi-vue3-vibe-code
-description: The default architecture for building a small web app fast - Vue 3 and Vue Router loaded from a CDN or a local copy, native ES modules, plain HTML and CSS, Options API, no build step and no .vue files. Use this whenever the user wants an MVP, prototype, vibe-coded app, internal tool, dashboard, admin page, or "quick little thing" and has not named a stack, since this skill picks the stack for them. Use it just as much when they do say Vue but no bundler, when they say no-build / CDN / single HTML file, or when a project already has an index.html loading Vue via script tag or import map - including small follow-ups like "add a page", "add a route", "make this filterable". It owns the architecture and the prototype-not-production posture, so it complements the narrower vue-* reference skills rather than competing with them. Skip only for an existing Vite, Nuxt, SFC, or TypeScript project.
+description: Prototype Vue 3 apps. CDN/local load, no build, plain HTML/CSS. MVPs, dashboards, tools. Vue Router, Options API, vanilla JavaScript.
+metadata:
+  last_updated: 2026-09-23
+  author: Joosep Kõivistik
+  repository: https://github.com/equilerex/jookoi-ai-market
 ---
 
 # jookoi-vue3-vibe-code

@@ -1,6 +1,10 @@
 ---
 name: jookoi-fastled
-description: Write LED animations and effects with the FastLED library - the animation loop, color and palette work, motion primitives, 1D and 2D matrix patterns, and complete effect recipes like fire, twinkle, breathing, and chases, plus what makes an effect actually read well to a human eye. Use this whenever the task involves making LEDs move, fade, pulse, shimmer, or react - including requests phrased as "make my strip do X", "I want a fire effect", "animate my matrix", "rainbow that speeds up with the beat", "why does my effect look harsh or flat", or any sketch touching WS2812/NeoPixel/APA102/SK9822 output. Also use it when reviewing, debugging, or tuning existing LED effect code, since several widely-copied FastLED idioms (the XY() helper, blur2d's short form, unguarded pin literals, fl:: on functions that are global) are stale or subtly wrong.
+description: FastLED animations and effects. Color, motion, patterns, recipes, philosophy of whats pleasing to the eye
+metadata:
+  last_updated: 2026-09-23
+  author: Joosep Kõivistik
+  repository: https://github.com/equilerex/jookoi-ai-market
 ---
 
 # jookoi-fastled

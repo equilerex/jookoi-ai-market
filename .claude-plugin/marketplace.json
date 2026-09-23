@@ -4,6 +4,7 @@
     "name": "Joosep Kõivistik",
     "email": "equilerex@gmail.com"
   },
+  "description": "Personal developer marketplace for frontend developer tools, memory system, tone rules, and domain skills.",
   "plugins": [
     {
       "name": "jookoi-dev",

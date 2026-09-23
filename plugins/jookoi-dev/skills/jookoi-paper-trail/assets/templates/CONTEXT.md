@@ -1,5 +1,5 @@
 # CONTEXT — <folder-or-feature-name>
-updated: YYYY-MM-DD
+updated: DD-MM-YYYY HH:MM
 
 <!-- All four sections stay even when briefly empty — an absent section is
      indistinguishable from an omission.

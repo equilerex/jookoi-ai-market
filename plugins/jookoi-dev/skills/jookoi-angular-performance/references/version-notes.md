@@ -18,7 +18,10 @@ What changed per major that changes performance advice. Use it to avoid recommen
 - **Zoneless provider**: `provideExperimentalZonelessChangeDetection` (v18-v19) → `provideZonelessChangeDetection` (v20+). Default for new apps in v21+, existing apps still opt in.
 - **Default change detection**: eager before v22, OnPush in v22+. The explicit opt-out strategy's name changed with the flip (`Default` before, reported as `Eager` in v22). Check the installed typings before writing it.
 - **SSR route config**: `provideServerRouting` (v19) vs `provideServerRendering(withRoutes())` (v20+).
-- **Incremental hydration**: needed `withIncrementalHydration()` while in preview. Current docs say it's on by default with `provideClientHydration()`.
+- **Incremental hydration**: on v22 it is on by default with `provideClientHydration()`, `withIncrementalHydration()` is deprecated, and `withNoIncrementalHydration()` opts out (from the 22.1 source). On v20 and v21 it is opt-in via `withIncrementalHydration()`. Check the major first. Which version first stabilised it (19 or 20) is unverified.
 - **`@defer` on v17**: dev preview. Hydrate triggers need v19+ and SSR.
 - **Signal Forms**: experimental in v21, don't recommend for production there. Reactive Forms remain fine for large dynamic forms and third-party `ControlValueAccessor` integrations.
-- **Builder**: projects created before v17 may still use the webpack `browser` builder. `ng update` offers the migration to `@angular/build:application`, which is a prerequisite for the esbuild `stats.json` workflow.
+- **Builder**: projects created before v17 may still use the webpack `browser` builder. `ng update` offers the migration to `@angular/build:application`, which is a prerequisite for the esbuild `browser-stats.json` workflow.
+- **HttpClient backend**: `fetch` is the default from 22.0 and `withFetch` is deprecated there. It is still needed on 20 and 21.
+- **Resources**: `resource`, `httpResource` and `rxResource` are stable in 22 and experimental in 21.
+- **Generated budgets and stats file**: read from `main`, not per-version tags. See `build-and-deploy.md`.

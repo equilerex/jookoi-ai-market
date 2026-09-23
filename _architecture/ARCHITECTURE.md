@@ -9,7 +9,7 @@ Personal Claude Code plugin marketplace. Optional, richer extension layer on top
 
 - `.claude-plugin/marketplace.json` — catalog listing the plugins below.
 - `plugins/jookoi-dev/` — one broad plugin, not fragmented per-topic. Split a capability into its own plugin only when it needs independent distribution, versioning, or audience.
-- `plugins/jookoi-dev/skills/` — `jookoi-paper-trail`, `jookoi-write-like-a-person`, and `jookoi-write-casual-technical` are copies of baseline-universal skills; `jookoi-vue3-vibe-code`, `jookoi-fastled`, and `jookoi-angular-performance` are domain-specific and live here natively. Domain skills that pin a framework version carry a sibling `README.md` with provenance (verified baseline, date, refresh checklist).
+- `plugins/jookoi-dev/skills/`: `jookoi-paper-trail`, `jookoi-create-skill`, `jookoi-write-like-a-person`, and `jookoi-write-casual-technical` are copies of baseline-universal skills. `jookoi-vue3-vibe-code`, `jookoi-fastled`, and `jookoi-angular-performance` are domain-specific and live here natively. Domain skills that pin a framework version carry a sibling `README.md` with provenance (verified baseline, date, refresh checklist).
 
 ## Baseline relationship
 

@@ -13,7 +13,7 @@ Measure the same route with the same tool before and after every change. Without
 ## Bundle analysis
 
 - `ng build --configuration production` prints initial and lazy chunk sizes, and warns or fails on budgets.
-- `ng build --configuration production --stats-json` writes `stats.json`, an **esbuild metafile** since the v17 application builder. Load it at esbuild.github.io/analyze. `webpack-bundle-analyzer` does not read it.
+- `ng build --configuration production --stats-json` writes an **esbuild metafile** under `dist/<project>/` (`stats.json` on 22.1.6, `browser-stats.json` in `main` source. See `build-and-deploy.md`) since the v17 application builder. Load it at esbuild.github.io/analyze. `webpack-bundle-analyzer` does not read it.
 - Alternative: `source-map-explorer` over the built JS, with `sourceMap: true` and `namedChunks: true` temporarily enabled.
 
 ## Budgets (`angular.json`)
@@ -31,7 +31,7 @@ Set `maximumError` just above the current size, not at a number that never fires
 
 - **Build**: `ng build --configuration production` fails on `maximumError`.
 - **Lint**: `angular-eslint` rules `@angular-eslint/template/no-call-expression` (tune `allowList`/`allowPrefix` if it flags signal reads in your version) and `@angular-eslint/prefer-signals`. Run `ng lint`.
-- **Lighthouse CI**: `npx @lhci/cli autorun` with a `lighthouserc.json`:
+- **Lighthouse CI**: `npx @lhci/cli autorun` with a `lighthouserc.json`. The package's last release was 2025-06 and it bundles an older Lighthouse than the current one, so check it before adopting. Diffing against a base branch needs an LHCI server. See `measurement-automation.md`:
   ```json
   {
     "ci": {

@@ -1,38 +1,40 @@
 #!/usr/bin/env node
-// jookoi-paper-trail — context-file mechanics.
-// Design: _architecture/plans/2026-08-30-jookoi-paper-trail.md
-// Redesign: _architecture/plans/2026-09-02-jookoi-doc-redesign.md
-// Spec:   ../references/file-formats.md, ../references/pipeline.md
+// jookoi-paper-trail — working-set store and context-file mechanics.
+// Design: _architecture/plans/2026-09-19-paper-trail-v2-keyed-store-todo-backlog-decisions-decision-l.md
+// Spec:   ../references/store-format.md, ../references/file-formats.md
 //
 // Usage:
-//   jookoi-paper-trail backlog "<title>" "<body>" [--status OPEN]
-//   jookoi-paper-trail flush --title "<t>"                  TODO.md -> archive/YYYY-MM.md, reset TODO.md
-//   jookoi-paper-trail status                                checklist counts, last flush date
-//   jookoi-paper-trail stale                                 updated: vs folder's last commit
-//   jookoi-paper-trail check                                 validate managed files against the spec
-//   jookoi-paper-trail new-decision "<title>"                next NNN from template
-//   jookoi-paper-trail new-plan "<topic>"                    dated plan file from template
+//   jookoi-paper-trail list [--status=S] [--since=DATE] [--stale=DAYS]   default: now items + 3 latest done
+//   jookoi-paper-trail find "<text>"                        every status plus the archive
+//   jookoi-paper-trail show <id>
+//   jookoi-paper-trail count                                counts per status, last flush
+//   jookoi-paper-trail render [--status=S]                  store as markdown
+//   jookoi-paper-trail add "<markdown>" [--status=now|parked] [placement]
+//   jookoi-paper-trail done|park|start|drop <id>
+//   jookoi-paper-trail edit <id> "<markdown>"
+//   jookoi-paper-trail move <id> <placement>                placement: --after=ID --before=ID --first --last
+//   jookoi-paper-trail flush [--before=DATE]                done+dropped -> archive/items-YYYY-MM.json
+//   jookoi-paper-trail stale [DAYS]                         stale now items, plus CONTEXT.md files behind their folder
+//   jookoi-paper-trail check                                validate the store and managed files
+//   jookoi-paper-trail new-decision "<title>"               next NNN from template
+//   jookoi-paper-trail new-plan "<topic>"                   dated plan file from template
 //
 // Global flags: --private (operate on _jookoi-architecture/), --root <path>, --dry-run
 //
-// This script owns mechanics only: dating, heading grammar, newest-first insertion,
-// archive-index pointers, NNN allocation, updated: bumping, template instantiation,
-// the session marker. Judgement -- what happened, where it belongs, what TODO.md's
-// Context header says, and what survives into BACKLOG.md before a flush -- stays
-// with the model. TODO.md's checklist is plain-text and hand-edited; the script
-// only touches it during flush.
+// This script is the only writer of items.json. Judgement (what happened, where it
+// belongs, what TODO.md's Context header says) stays with the model.
 
 const fs = require("fs");
 const path = require("path");
 const { execSync } = require("child_process");
 
-const ENTRY_RE = /^## (\d{4}-\d{2}-\d{2}) — (.+)$/;
 const TEMPLATES = path.join(__dirname, "..", "assets", "templates");
-const BACKLOG_STATUS = ["OPEN", "DESIGNED", "BLOCKED", "MOVED", "DROPPED"];
+const STATUSES = ["now", "parked", "done", "dropped"];
+const STEP = 1000;
 
 class Refusal extends Error {}
-function refuse(file, detail) {
-  throw new Refusal(`${file}: ${detail}`);
+function refuse(where, detail) {
+  throw new Refusal(`${where}: ${detail}`);
 }
 
 // ---------------------------------------------------------------- environment
@@ -40,9 +42,15 @@ function refuse(file, detail) {
 function repoRoot(explicit) {
   if (explicit) return path.resolve(explicit);
   try {
-    return execSync("git rev-parse --show-toplevel", { encoding: "utf8" }).trim();
+    return execSync("git rev-parse --show-toplevel", { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
   } catch {
-    return process.cwd();
+    let dir = process.cwd();
+    for (;;) {
+      if (fs.existsSync(path.join(dir, "_architecture")) || fs.existsSync(path.join(dir, "_jookoi-architecture"))) return dir;
+      const up = path.dirname(dir);
+      if (up === dir) return process.cwd();
+      dir = up;
+    }
   }
 }
 
@@ -56,6 +64,24 @@ function today() {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
+// Full timestamp for items.json's ts_* fields. ISO 8601, UTC, seconds precision.
+function nowISO() {
+  return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+
+// Timestamp for prose MD content (Date:, Session:, updated:). European order, local time.
+function nowEuro() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  return `${p(d.getDate())}-${p(d.getMonth() + 1)}-${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+// "DD-MM-YYYY HH:MM" -> "YYYY-MM-DD", for comparing against git's --date=short output.
+function euroToISODate(s) {
+  const m = s.match(/^(\d{2})-(\d{2})-(\d{4})/);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : null;
+}
+
 function slugify(s) {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
 }
@@ -64,269 +90,329 @@ function template(name) {
   return fs.readFileSync(path.join(TEMPLATES, name), "utf8");
 }
 
-function readOrTemplate(file, templateName) {
-  if (fs.existsSync(file)) return fs.readFileSync(file, "utf8");
-  return template(templateName);
+// ---------------------------------------------------------------------- store
+
+function emptyStore() {
+  return { next_id: 1, last_flush: null, items: {} };
 }
 
-// ------------------------------------------------------------------- parsing
+function loadStore(ctx) {
+  const file = path.join(ctx.arch, "items.json");
+  if (!fs.existsSync(file)) return { file, raw: null, store: emptyStore() };
+  const raw = fs.readFileSync(file, "utf8");
+  let store;
+  try {
+    store = JSON.parse(raw);
+  } catch (e) {
+    refuse(file, `not valid JSON (${e.message}) -- fix by hand`);
+  }
+  if (!store || typeof store !== "object" || typeof store.items !== "object" || !Number.isInteger(store.next_id)) {
+    refuse(file, 'expected {"next_id": <int>, "items": {...}}');
+  }
+  for (const [id, it] of Object.entries(store.items)) {
+    if (!STATUSES.includes(it.status)) refuse(file, `${id}: status ${JSON.stringify(it.status)} outside ${STATUSES.join(" | ")}`);
+    if (!Array.isArray(it.content) || !it.content.length) refuse(file, `${id}: content must be a non-empty array of lines`);
+    if (typeof it.priority !== "number") refuse(file, `${id}: priority must be a number`);
+  }
+  return { file, raw, store };
+}
 
-// Splits a document body into `## YYYY-MM-DD — Title` entries. Text before the
-// first entry is returned as `preamble`. Refuses on a `##` heading that is not an
-// entry, since that means the file is not in the shape this script can move.
-function parseEntries(text, file, { allowOtherHeadings = false } = {}) {
-  const lines = text.split(/\r?\n/);
-  const entries = [];
-  const preamble = [];
-  let current = null;
+// Read-modify-write with a compare against what was read; a mismatch means a
+// concurrent writer (terminal vs. agent) and is refused rather than merged.
+function saveStore(ctx, loaded) {
+  const current = fs.existsSync(loaded.file) ? fs.readFileSync(loaded.file, "utf8") : null;
+  if (current !== loaded.raw) refuse(loaded.file, "changed on disk while this command ran -- re-run it");
+  ctx.write(loaded.file, JSON.stringify(loaded.store, null, 2) + "\n");
+}
 
-  lines.forEach((line, i) => {
-    const m = line.match(ENTRY_RE);
-    if (m) {
-      if (current) entries.push(current);
-      current = { date: m[1], title: m[2], body: [], line: i + 1 };
-      return;
-    }
-    if (/^## /.test(line) && !allowOtherHeadings) {
-      refuse(file, `line ${i + 1}: heading is not a dated entry -- expected "## YYYY-MM-DD — Title", got ${JSON.stringify(line)}`);
-    }
-    (current ? current.body : preamble).push(line);
+function normalizeId(input) {
+  const m = String(input || "").match(/^t?(\d+)$/i);
+  return m ? "t" + m[1].padStart(3, "0") : null;
+}
+
+function getItem(store, input) {
+  const id = normalizeId(input);
+  if (!id) refuse("id", `${JSON.stringify(input)} is not an item id (expected e.g. t017)`);
+  const item = store.items[id];
+  if (!item) refuse("id", `${id} does not exist in the store (it may have been flushed to the archive -- try: find)`);
+  return { id, item };
+}
+
+function byPriority(a, b) {
+  return a[1].priority - b[1].priority || a[0].localeCompare(b[0]);
+}
+
+function title(item) {
+  return item.content[0];
+}
+
+function line(id, item) {
+  const box = item.status === "done" ? "[x]" : item.status === "dropped" ? "[-]" : "[ ]";
+  return `- ${box} \`${id}\` ${title(item)}`;
+}
+
+function toLines(markdown) {
+  const lines = String(markdown).replace(/\r\n/g, "\n").replace(/^\n+|\n+$/g, "").split("\n");
+  if (!lines[0]) refuse("content", "empty -- the first line is the item title");
+  return lines;
+}
+
+// Placement computes a priority from a neighbour the caller already saw in `list`.
+function placement(store, opts, excludeId) {
+  const others = Object.entries(store.items).filter(([id]) => id !== excludeId).sort(byPriority);
+  if (opts.priority !== undefined) {
+    const n = Number(opts.priority);
+    if (!Number.isFinite(n)) refuse("--priority", "must be a number");
+    return n;
+  }
+  if (opts.first) return others.length ? others[0][1].priority - STEP : STEP;
+  const ref = opts.after !== undefined ? ["after", opts.after] : opts.before !== undefined ? ["before", opts.before] : null;
+  if (ref) {
+    const { id } = getItem(store, ref[1]);
+    const i = others.findIndex(([oid]) => oid === id);
+    if (i === -1) refuse("placement", `cannot place ${excludeId} relative to itself`);
+    const p = others[i][1].priority;
+    if (ref[0] === "after") return i === others.length - 1 ? p + STEP : (p + others[i + 1][1].priority) / 2;
+    return i === 0 ? p - STEP : (others[i - 1][1].priority + p) / 2;
+  }
+  return others.length ? others[others.length - 1][1].priority + STEP : STEP;
+}
+
+// ------------------------------------------------------------- store commands
+
+function cmdList(ctx, _args, opts) {
+  const { store } = loadStore(ctx);
+  const entries = Object.entries(store.items).sort(byPriority);
+  let picked;
+
+  if (opts.stale !== undefined) {
+    const days = Number(opts.stale);
+    if (!Number.isFinite(days)) refuse("--stale", "needs a number of days");
+    picked = entries.filter(([, it]) => it.status === "now" && daysBetween(it.ts_touched, today()) >= days);
+  } else if (opts.status) {
+    if (!STATUSES.includes(opts.status)) refuse("--status", `${opts.status} is outside ${STATUSES.join(" | ")}`);
+    picked = entries.filter(([, it]) => it.status === opts.status);
+    if (opts.since) picked = picked.filter(([, it]) => (it.ts_done || it.ts_touched || "") >= opts.since);
+    if (opts.status === "done") picked.sort((a, b) => (b[1].ts_done || "").localeCompare(a[1].ts_done || "") || b[0].localeCompare(a[0]));
+  } else {
+    const now = entries.filter(([, it]) => it.status === "now");
+    const done = entries
+      .filter(([, it]) => it.status === "done")
+      .sort((a, b) => (b[1].ts_done || "").localeCompare(a[1].ts_done || "") || b[0].localeCompare(a[0]))
+      .slice(0, 3);
+    picked = now.concat(done);
+  }
+  if (!picked.length) return ctx.report("(none)");
+  picked.forEach(([id, it]) => ctx.report(line(id, it)));
+}
+
+function daysBetween(from, to) {
+  if (!from) return Infinity;
+  return Math.floor((Date.parse(to) - Date.parse(from)) / 86400000);
+}
+
+function archiveFiles(ctx) {
+  const dir = path.join(ctx.arch, "archive");
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir).filter((f) => /^items-\d{4}-\d{2}\.json$/.test(f)).sort().map((f) => path.join(dir, f));
+}
+
+function cmdFind(ctx, [text]) {
+  if (!text) refuse("find", "needs a search string");
+  const needle = text.toLowerCase();
+  const { store } = loadStore(ctx);
+  let hits = 0;
+  Object.entries(store.items).sort(byPriority).forEach(([id, it]) => {
+    if (it.content.join("\n").toLowerCase().includes(needle)) { ctx.report(`${line(id, it)}  (${it.status})`); hits++; }
   });
-  if (current) entries.push(current);
-
-  entries.forEach((e) => {
-    e.body = e.body.join("\n").replace(/^\n+|\n+$/g, "");
+  archiveFiles(ctx).forEach((f) => {
+    let arch;
+    try { arch = JSON.parse(fs.readFileSync(f, "utf8")); } catch { refuse(f, "not valid JSON"); }
+    Object.entries(arch.items || {}).forEach(([id, it]) => {
+      if (it.content.join("\n").toLowerCase().includes(needle)) { ctx.report(`${line(id, it)}  (archived: ${path.basename(f)})`); hits++; }
+    });
   });
-  return { preamble: preamble.join("\n").replace(/\n+$/, ""), entries };
+  const legacy = path.join(ctx.arch, "archive");
+  if (fs.existsSync(legacy)) {
+    fs.readdirSync(legacy).filter((f) => /^\d{4}-\d{2}\.md$/.test(f)).forEach((f) => {
+      fs.readFileSync(path.join(legacy, f), "utf8").split("\n").forEach((l, i) => {
+        if (l.toLowerCase().includes(needle)) { ctx.report(`archive/${f}:${i + 1}: ${l.trim().slice(0, 140)}`); hits++; }
+      });
+    });
+  }
+  if (!hits) ctx.report("(no matches)");
 }
 
-function renderEntries(entries) {
-  return entries.map((e) => `## ${e.date} — ${e.title}\n\n${e.body}`).join("\n\n");
+function cmdShow(ctx, [id]) {
+  const { store } = loadStore(ctx);
+  const found = getItem(store, id);
+  const it = found.item;
+  ctx.report(`${found.id}  ${it.status}  created ${it.ts_created || "?"}  started ${it.ts_started || "-"}  done ${it.ts_done || "-"}  touched ${it.ts_touched || "?"}`);
+  ctx.report("");
+  it.content.forEach((l) => ctx.report(l));
 }
 
-// Newest first; stable within a date so an earlier flush keeps its position.
-function sortEntries(entries) {
-  return entries.slice().sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+function cmdCount(ctx) {
+  const { store } = loadStore(ctx);
+  const counts = Object.fromEntries(STATUSES.map((s) => [s, 0]));
+  Object.values(store.items).forEach((it) => counts[it.status]++);
+  ctx.report(STATUSES.map((s) => `${s} ${counts[s]}`).join("  "));
+  let archived = 0;
+  archiveFiles(ctx).forEach((f) => { archived += Object.keys(JSON.parse(fs.readFileSync(f, "utf8")).items || {}).length; });
+  ctx.report(`archived ${archived}  last flush ${store.last_flush || "never"}`);
 }
 
-// TODO.md is the one file with two differently-behaving blocks: a wholesale-
-// rewritten Context header and a hand-maintained Checklist.
-function splitTodo(text, file) {
-  const cIdx = text.indexOf("\n## Context");
-  const kIdx = text.indexOf("\n## Checklist");
-  if (cIdx === -1) refuse(file, 'missing "## Context" heading');
-  if (kIdx === -1) refuse(file, 'missing "## Checklist" heading');
-  if (kIdx < cIdx) refuse(file, '"## Checklist" appears before "## Context"');
-  return {
-    head: text.slice(0, cIdx).replace(/\n+$/, ""),
-    context: text.slice(cIdx + 1, kIdx).replace(/^## Context\n?/, "").replace(/\n+$/, ""),
-    checklist: text.slice(kIdx + 1).replace(/^## Checklist\n?/, "").replace(/^\n+|\n+$/g, ""),
+function cmdRender(ctx, _args, opts) {
+  const { store } = loadStore(ctx);
+  const wanted = opts.status ? [opts.status] : STATUSES;
+  wanted.forEach((s) => { if (!STATUSES.includes(s)) refuse("--status", `${s} is outside ${STATUSES.join(" | ")}`); });
+  const out = [];
+  wanted.forEach((s) => {
+    const entries = Object.entries(store.items).filter(([, it]) => it.status === s).sort(byPriority);
+    if (!entries.length) return;
+    out.push(`## ${s}`, "");
+    entries.forEach(([id, it]) => {
+      out.push(`### \`${id}\` ${title(it)}`, "");
+      const body = it.content.slice(1).join("\n").replace(/^\n+|\n+$/g, "");
+      if (body) out.push(body, "");
+    });
+  });
+  ctx.report(out.length ? out.join("\n").replace(/\n+$/, "") : "(empty)");
+}
+
+function cmdAdd(ctx, [markdown], opts) {
+  if (!markdown) refuse("add", 'needs "<markdown>" (first line is the title)');
+  const status = opts.status || "now";
+  if (status !== "now" && status !== "parked") refuse("add", "--status must be now or parked");
+  const loaded = loadStore(ctx);
+  const { store } = loaded;
+  const id = "t" + String(store.next_id).padStart(3, "0");
+  const d = nowISO();
+  store.items[id] = {
+    content: toLines(markdown),
+    status,
+    priority: placement(store, opts, id),
+    ts_created: d,
+    ts_started: status === "now" ? d : null,
+    ts_done: null,
+    ts_touched: d,
+  };
+  store.next_id++;
+  saveStore(ctx, loaded);
+  ctx.report(`${id} added (${status})`);
+}
+
+function cmdTransition(target) {
+  return (ctx, [id]) => {
+    const loaded = loadStore(ctx);
+    const { id: realId, item } = getItem(loaded.store, id);
+    const d = nowISO();
+    item.status = target;
+    item.ts_touched = d;
+    item.ts_done = target === "done" ? d : null;
+    if (target === "now" && !item.ts_started) item.ts_started = d;
+    saveStore(ctx, loaded);
+    ctx.report(`${realId} -> ${target}`);
   };
 }
 
-function joinTodo(parts) {
-  return [
-    parts.head,
-    "",
-    "## Context",
-    "",
-    parts.context.trim(),
-    "",
-    "## Checklist",
-    "",
-    parts.checklist.trim(),
-    "",
-  ].join("\n").replace(/\n{3,}/g, "\n\n");
+function cmdEdit(ctx, [id, markdown]) {
+  if (!id || !markdown) refuse("edit", 'needs <id> "<markdown>"');
+  const loaded = loadStore(ctx);
+  const { id: realId, item } = getItem(loaded.store, id);
+  item.content = toLines(markdown);
+  item.ts_touched = nowISO();
+  saveStore(ctx, loaded);
+  ctx.report(`${realId} edited`);
 }
 
-// ------------------------------------------------------------------ commands
-
-function cmdBacklog(ctx, [title, body], opts) {
-  if (!title || !body) refuse("backlog", "needs a title and a body");
-  const status = (opts.status || "OPEN").toUpperCase();
-  if (!BACKLOG_STATUS.includes(status)) {
-    refuse("backlog", `Status ${status} is outside ${BACKLOG_STATUS.join(" | ")}`);
+function cmdMove(ctx, [id], opts) {
+  const loaded = loadStore(ctx);
+  const { id: realId, item } = getItem(loaded.store, id);
+  if (!["after", "before", "first", "last", "priority"].some((k) => opts[k] !== undefined)) {
+    refuse("move", "needs a placement: --after=<id> | --before=<id> | --first | --last");
   }
-  const file = path.join(ctx.arch, "BACKLOG.md");
-  const text = readOrTemplate(file, "backlog.md").replace(/\n+$/, "");
-  if (new RegExp(`^## ${title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "m").test(text)) {
-    refuse(file, `an item titled "${title}" already exists -- edit it rather than adding a second`);
-  }
-  ctx.write(file, `${text}\n\n## ${title}\n\nStatus: ${status}\n\n${body}\n`);
-  ctx.report(`backlog += "${title}" (${status})`);
+  item.priority = placement(loaded.store, opts, realId);
+  item.ts_touched = nowISO();
+  saveStore(ctx, loaded);
+  ctx.report(`${realId} moved`);
 }
 
+// Moves done and dropped items out of the live store. Nothing else is touched.
 function cmdFlush(ctx, _args, opts) {
-  if (!opts.title) refuse("flush", "needs --title \"<t>\"");
-  const tFile = path.join(ctx.arch, "TODO.md");
-  if (!fs.existsSync(tFile)) refuse(tFile, "does not exist -- nothing to flush");
-  const parts = splitTodo(fs.readFileSync(tFile, "utf8"), tFile);
-
-  if (!parts.checklist.trim() && !parts.context.trim()) {
-    ctx.report("TODO.md is already empty -- nothing to flush");
-    return;
-  }
-
-  const body = [
-    parts.context.trim() ? `Context:\n\n${parts.context.trim()}` : "",
-    parts.checklist.trim() ? `Checklist:\n\n${parts.checklist.trim()}` : "",
-  ].filter(Boolean).join("\n\n");
-
-  const date = today();
-  const month = date.slice(0, 7);
-  const archDirPath = path.join(ctx.arch, "archive");
-  const mFile = path.join(archDirPath, `${month}.md`);
-  const mText = fs.existsSync(mFile)
-    ? fs.readFileSync(mFile, "utf8")
-    : template("archive-month.md").replace(/YYYY-MM/g, month);
-  const parsed = parseEntries(mText, mFile);
-
-  const existing = parsed.entries.find((e) => e.date === date && e.title === opts.title);
-  if (existing) {
-    existing.body = existing.body ? `${existing.body}\n\n${body}` : body;
-  } else {
-    parsed.entries.push({ date, title: opts.title, body });
-  }
-  ctx.write(mFile, `${parsed.preamble}\n\n${renderEntries(sortEntries(parsed.entries))}\n`);
-  updateArchiveIndex(ctx, archDirPath);
-
-  ctx.write(tFile, template("todo.md"));
-
-  writeMarker(ctx, opts);
-
-  ctx.report(`flushed TODO.md into archive/${month}.md as "${opts.title}"`);
-  ctx.report("TODO.md reset to template.");
-  ctx.report("");
-  ctx.report("Before you called this, you should already have moved anything still relevant into BACKLOG.md.");
-  ctx.report("If you didn't, it's gone from the live working set now -- check archive/" + month + ".md.");
-}
-
-function updateArchiveIndex(ctx, archDirPath) {
-  const iFile = path.join(archDirPath, "index.md");
-  const iText = readOrTemplate(iFile, "archive-index.md");
-  const head = iText.split("\n").slice(0, 2).join("\n");
-
-  const months = fs.existsSync(archDirPath)
-    ? fs.readdirSync(archDirPath).filter((f) => /^\d{4}-\d{2}\.md$/.test(f)).sort().reverse()
-    : [];
-
-  const existing = new Map();
-  iText.split("\n").forEach((l) => {
-    const m = l.match(/^- \*\*`(\d{4}-\d{2}\.md)`\*\* — [^:]*: (.*)$/);
-    if (m) existing.set(m[1], m[2]);
-  });
-
-  const pointers = months.map((f) => {
-    const parsed = parseEntries(fs.readFileSync(path.join(archDirPath, f), "utf8"), f);
-    const dates = parsed.entries.map((e) => e.date).sort();
-    const range = dates.length ? (dates[0] === dates[dates.length - 1] ? dates[0] : `${dates[0]} to ${dates[dates.length - 1]}`) : "empty";
-    const summary = existing.get(f) || parsed.entries.map((e) => e.title).slice(0, 3).join("; ") || "no entries";
-    return `- **\`${f}\`** — ${range}: ${summary}`;
-  });
-
-  ctx.write(iFile, `${head}\n\n${pointers.join("\n")}\n`);
-  ctx.report(`archive/index.md now lists ${pointers.length} file${pointers.length === 1 ? "" : "s"}`);
-}
-
-function cmdStatus(ctx) {
-  const files = ["TODO.md", "BACKLOG.md", "ARCHITECTURE.md"];
-  files.forEach((f) => {
-    const p = path.join(ctx.arch, f);
-    if (!fs.existsSync(p)) return ctx.report(`${f.padEnd(20)} absent`);
-    const n = fs.readFileSync(p, "utf8").split("\n").length;
-    ctx.report(`${f.padEnd(20)} ${n} lines`);
-  });
-
-  const tFile = path.join(ctx.arch, "TODO.md");
-  if (fs.existsSync(tFile)) {
-    const parts = splitTodo(fs.readFileSync(tFile, "utf8"), tFile);
-    const done = (parts.checklist.match(/^- \[x\]/gim) || []).length;
-    const open = (parts.checklist.match(/^- \[ \]/gm) || []).length;
-    ctx.report("");
-    ctx.report(`checklist: ${open} open, ${done} done`);
-    ctx.report(open + done === 0 ? "checklist is empty" : "");
-  }
-
-  const archDirPath = path.join(ctx.arch, "archive");
-  const months = fs.existsSync(archDirPath)
-    ? fs.readdirSync(archDirPath).filter((f) => /^\d{4}-\d{2}\.md$/.test(f)).sort().reverse()
-    : [];
-  if (months.length) {
-    const latest = parseEntries(fs.readFileSync(path.join(archDirPath, months[0]), "utf8"), months[0]);
-    const dates = sortEntries(latest.entries).map((e) => e.date);
-    if (dates.length) ctx.report(`last flush: ${dates[0]}`);
-  }
-
-  const marker = markerPath(ctx, {});
-  if (marker) ctx.report(fs.existsSync(marker) ? "flush marker present for this session" : "no flush marker for this session");
-}
-
-function cmdStale(ctx) {
-  let out;
-  try {
-    // -z: paths come back verbatim, so non-ASCII names are not quoted and escaped.
-    out = execSync("git ls-files -z", { cwd: ctx.root, encoding: "utf8" }).split("\0");
-  } catch {
-    refuse("stale", "needs a git repository -- git ls-files failed");
-  }
-  // Templates ship with the skill and carry `updated: YYYY-MM-DD` as a placeholder,
-  // so they can never match -- including them flags every vendored copy forever.
-  const contexts = out.filter(
-    (f) => /(^|\/)(_jookoi-)?CONTEXT\.md$/.test(f) && !/(^|\/)assets\/templates\//.test(f)
+  const loaded = loadStore(ctx);
+  const { store } = loaded;
+  const before = opts.before;
+  const moving = Object.entries(store.items).filter(([, it]) =>
+    (it.status === "done" || it.status === "dropped") && (!before || (it.ts_done || it.ts_touched || "") < before)
   );
-  if (contexts.length === 0) return ctx.report("no context files found -- nothing to check");
+  if (!moving.length) return ctx.report("nothing to flush");
 
+  const month = today().slice(0, 7);
+  const file = path.join(ctx.arch, "archive", `items-${month}.json`);
+  let arch = { items: {} };
+  if (fs.existsSync(file)) {
+    try { arch = JSON.parse(fs.readFileSync(file, "utf8")); } catch { refuse(file, "not valid JSON -- fix by hand"); }
+    if (!arch.items) refuse(file, 'expected {"items": {...}}');
+  }
+  moving.forEach(([id, it]) => {
+    if (arch.items[id]) refuse(file, `${id} already archived this month -- ids must never collide`);
+    arch.items[id] = it;
+  });
+  ctx.write(file, JSON.stringify(arch, null, 2) + "\n");
+  moving.forEach(([id]) => delete store.items[id]);
+  store.last_flush = nowISO();
+  saveStore(ctx, loaded);
+  ctx.report(`flushed ${moving.length} item${moving.length === 1 ? "" : "s"} into archive/items-${month}.json: ${moving.map(([id]) => id).join(" ")}`);
+}
+
+// ---------------------------------------------------------- stale / check / new
+
+function cmdStale(ctx, [days]) {
+  const limit = days === undefined ? 14 : Number(days);
+  if (!Number.isFinite(limit)) refuse("stale", "days must be a number");
+  const { store } = loadStore(ctx);
+  const stale = Object.entries(store.items)
+    .filter(([, it]) => it.status === "now" && daysBetween(it.ts_touched, today()) >= limit)
+    .sort(byPriority);
+  ctx.report(stale.length ? `now items untouched for ${limit}+ days:` : `no now items untouched for ${limit}+ days`);
+  stale.forEach(([id, it]) => ctx.report(line(id, it)));
+
+  let out = [];
+  try {
+    out = execSync("git ls-files -z", { cwd: ctx.root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).split("\0");
+  } catch { ctx.report("context files: skipped (not a git repository)"); return; }
+  // Templates carry a placeholder `updated:` and would be flagged forever.
+  const contexts = out.filter((f) => /(^|\/)(_jookoi-)?CONTEXT\.md$/.test(f) && !/(^|\/)assets\/templates\//.test(f));
   let flagged = 0;
   let checked = 0;
   contexts.forEach((rel) => {
     const abs = path.join(ctx.root, rel);
-    // git ls-files also lists staged-then-deleted entries; reading one aborts the whole run.
     if (!fs.existsSync(abs)) return;
     checked++;
-    const m = fs.readFileSync(abs, "utf8").match(/^updated:\s*(\d{4}-\d{2}-\d{2})/m);
+    const m = fs.readFileSync(abs, "utf8").match(/^updated:\s*(\d{2}-\d{2}-\d{4})[^\n]*/m);
     if (!m) { ctx.report(`${rel}  NO updated: LINE`); flagged++; return; }
-    const dir = path.dirname(rel);
+    const updatedISO = euroToISODate(m[1]);
     let committed;
     try {
-      committed = execSync(`git log -1 --format=%cd --date=short -- "${dir}"`, { cwd: ctx.root, encoding: "utf8" }).trim();
+      committed = execSync(`git log -1 --format=%cd --date=short -- "${path.dirname(rel)}"`, { cwd: ctx.root, encoding: "utf8" }).trim();
     } catch { return; }
-    if (committed && committed > m[1]) {
-      ctx.report(`${rel}  updated ${m[1]}, folder committed ${committed}  LIKELY STALE`);
-      flagged++;
-    }
+    if (committed && updatedISO && committed > updatedISO) { ctx.report(`${rel}  updated ${m[1]}, folder committed ${committed}  LIKELY STALE`); flagged++; }
   });
-  ctx.report("");
-  ctx.report(flagged ? `${flagged} of ${checked} flagged` : `${checked} checked, none stale`);
+  ctx.report(contexts.length ? (flagged ? `context files: ${flagged} of ${checked} flagged` : `context files: ${checked} checked, none stale`) : "context files: none found");
 }
 
 function cmdCheck(ctx) {
   let problems = 0;
   const say = (m) => { problems++; ctx.report(m); };
 
+  try { loadStore(ctx); } catch (e) { if (e instanceof Refusal) say(e.message); else throw e; }
+  archiveFiles(ctx).forEach((f) => {
+    try { JSON.parse(fs.readFileSync(f, "utf8")); } catch { say(`${path.relative(ctx.root, f)}: not valid JSON`); }
+  });
+
   const tFile = path.join(ctx.arch, "TODO.md");
-  if (fs.existsSync(tFile)) {
-    try { splitTodo(fs.readFileSync(tFile, "utf8"), tFile); } catch (e) { say(String(e.message)); }
-  }
-
-  const archDirPath = path.join(ctx.arch, "archive");
-  if (fs.existsSync(archDirPath)) {
-    fs.readdirSync(archDirPath).filter((f) => /^\d{4}-\d{2}\.md$/.test(f)).forEach((f) => {
-      const p = path.join(archDirPath, f);
-      try { parseEntries(fs.readFileSync(p, "utf8"), p); } catch (e) { say(String(e.message)); }
-    });
-  }
-
-  const bFile = path.join(ctx.arch, "BACKLOG.md");
-  if (fs.existsSync(bFile)) {
-    const text = fs.readFileSync(bFile, "utf8");
-    const heads = [...text.matchAll(/^## (.+)$/gm)];
-    heads.forEach((h) => {
-      const after = text.slice(h.index).split("\n").slice(1, 4).join("\n");
-      const s = after.match(/^Status:\s*(\S+)/m);
-      if (!s) say(`BACKLOG.md: "${h[1]}" has no Status: line`);
-      else if (!BACKLOG_STATUS.includes(s[1])) say(`BACKLOG.md: "${h[1]}" Status ${s[1]} outside ${BACKLOG_STATUS.join(" | ")}`);
-    });
-  }
+  if (fs.existsSync(tFile) && !/^## Context$/m.test(fs.readFileSync(tFile, "utf8"))) say('TODO.md: missing "## Context"');
 
   const dDir = path.join(ctx.arch, "plans", "decisions");
   if (fs.existsSync(dDir)) {
@@ -338,23 +424,21 @@ function cmdCheck(ctx) {
       });
     });
   }
-
-  ctx.report("");
   ctx.report(problems ? `${problems} problem${problems === 1 ? "" : "s"} -- fix by hand; this script will not rewrite them` : "all managed files conform");
 }
 
-function cmdNewDecision(ctx, [title]) {
-  if (!title) refuse("new-decision", "needs a title");
+function cmdNewDecision(ctx, [name]) {
+  if (!name) refuse("new-decision", "needs a title");
   const dir = path.join(ctx.arch, "plans", "decisions");
   if (!ctx.dryRun) fs.mkdirSync(dir, { recursive: true });
   const used = fs.existsSync(dir)
     ? fs.readdirSync(dir).map((f) => parseInt((f.match(/^(\d{3})-/) || [])[1], 10)).filter(Number.isInteger)
     : [];
   const n = String((used.length ? Math.max(...used) : 0) + 1).padStart(3, "0");
-  const file = path.join(dir, `${n}-${slugify(title)}.md`);
+  const file = path.join(dir, `${n}-${slugify(name)}.md`);
   const body = template("decision-record.md")
-    .replace("# Decision NNN — <Title>", `# Decision ${n} — ${title}`)
-    .replace("Date: YYYY-MM-DD", `Date: ${today()}`);
+    .replace("# Decision NNN — <Title>", `# Decision ${n} — ${name}`)
+    .replace("Date: DD-MM-YYYY HH:MM", `Date: ${nowEuro()}`);
   ctx.write(file, body);
   ctx.report(`created plans/decisions/${path.basename(file)}`);
 }
@@ -367,60 +451,55 @@ function cmdNewPlan(ctx, [topic]) {
   if (fs.existsSync(file)) refuse(file, "already exists");
   const body = template("plan-session.md")
     .replace("# <Title>", `# ${topic}`)
-    .replace("Session: YYYY-MM-DD.", `Session: ${today()}.`);
+    .replace("Session: DD-MM-YYYY HH:MM.", `Session: ${nowEuro()}.`);
   ctx.write(file, body);
   ctx.report(`created plans/${path.basename(file)}`);
-}
-
-// -------------------------------------------------------------------- marker
-
-function markerPath(ctx, opts) {
-  const id = opts.session || process.env.CLAUDE_SESSION_ID || process.env.JOOKOI_SESSION_ID;
-  if (!id) return null;
-  return path.join(ctx.root, "_jookoi-architecture", `.jookoi-paper-trail-ran-${id}`);
-}
-
-function writeMarker(ctx, opts) {
-  const p = markerPath(ctx, opts);
-  if (!p) return;
-  if (!ctx.dryRun) {
-    fs.mkdirSync(path.dirname(p), { recursive: true });
-    fs.writeFileSync(p, `${new Date().toISOString()}\n`);
-  }
 }
 
 // ---------------------------------------------------------------------- main
 
 const COMMANDS = {
-  backlog: cmdBacklog,
+  list: cmdList,
+  find: cmdFind,
+  show: cmdShow,
+  count: cmdCount,
+  render: cmdRender,
+  add: cmdAdd,
+  done: cmdTransition("done"),
+  park: cmdTransition("parked"),
+  start: cmdTransition("now"),
+  drop: cmdTransition("dropped"),
+  edit: cmdEdit,
+  move: cmdMove,
   flush: cmdFlush,
-  status: cmdStatus,
   stale: cmdStale,
   check: cmdCheck,
   "new-decision": cmdNewDecision,
   "new-plan": cmdNewPlan,
 };
 
+const BOOLEAN_FLAGS = ["private", "dry-run", "first", "last"];
+
 function main(argv) {
   const cmd = argv[0];
   if (!cmd || cmd === "--help" || cmd === "-h" || !COMMANDS[cmd]) {
-    const usage = fs.readFileSync(__filename, "utf8").split("\n").slice(5, 16).map((l) => l.replace(/^\/\/ ?/, "")).join("\n");
+    const usage = fs.readFileSync(__filename, "utf8").split("\n").slice(4, 21).map((l) => l.replace(/^\/\/ ?/, "")).join("\n");
     console.log(usage);
     process.exit(cmd && !COMMANDS[cmd] ? 1 : 0);
   }
 
-  const opts = { private: false, dryRun: false };
+  const opts = {};
   const positional = [];
   for (let i = 1; i < argv.length; i++) {
     const a = argv[i];
-    if (a === "--private") opts.private = true;
-    else if (a === "--dry-run") opts.dryRun = true;
-    else if (a === "--root") opts.root = argv[++i];
-    else if (a === "--title") opts.title = argv[++i];
-    else if (a === "--status") opts.status = argv[++i];
-    else if (a === "--session") opts.session = argv[++i];
-    else if (a.startsWith("--")) { console.error(`Unknown flag: ${a}`); process.exit(1); }
-    else positional.push(a);
+    if (!a.startsWith("--")) { positional.push(a); continue; }
+    const eq = a.indexOf("=");
+    const key = (eq === -1 ? a.slice(2) : a.slice(2, eq));
+    const camel = key.replace(/-(\w)/, (_, c) => c.toUpperCase());
+    if (BOOLEAN_FLAGS.includes(key)) opts[camel] = true;
+    else if (eq !== -1) opts[camel] = a.slice(eq + 1);
+    else if (i + 1 < argv.length) opts[camel] = argv[++i];
+    else { console.error(`Flag needs a value: ${a}`); process.exit(1); }
   }
 
   const root = repoRoot(opts.root);
@@ -433,7 +512,7 @@ function main(argv) {
     write: (file, content) => {
       if (opts.dryRun) { lines.push(`[dry-run] would write ${path.relative(root, file)}`); return; }
       fs.mkdirSync(path.dirname(file), { recursive: true });
-      fs.writeFileSync(file, content.replace(/\n{3,}/g, "\n\n"));
+      fs.writeFileSync(file, content);
     },
   };
 
@@ -443,7 +522,7 @@ function main(argv) {
   } catch (e) {
     if (e instanceof Refusal) {
       console.error(`REFUSED -- ${e.message}`);
-      console.error("Nothing was written. Fix the file by hand; this script does not rewrite content it did not write.");
+      console.error("Nothing was written.");
       process.exit(2);
     }
     throw e;

@@ -1,6 +1,6 @@
 # Decision NNN — <Title>
 
-Date: YYYY-MM-DD
+Date: DD-MM-YYYY HH:MM
 
 Status: DECIDED
 

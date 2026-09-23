@@ -1,6 +1,10 @@
 ---
 name: jookoi-write-casual-technical
-description: Use whenever creating or editing technical documentation as a .md file (README, docs, SKILL.md, architecture notes, plans) that is not itself a reply to a person or non-technical text. Trigger even if the user hasn't asked for a writing-style check. For chat replies or people-facing text, prefer jookoi-write-like-a-person when it's installed.
+description: Anti-AI-slop writing style for docs, README, SKILL.md, plans, architecture. Direct, concise, no fluff or padding.
+metadata:
+  last_updated: 2026-09-23
+  author: Joosep Kõivistik
+  repository: https://github.com/equilerex/jookoi-ai-market
 ---
 
 # Casual technical writing & Communication Directive
