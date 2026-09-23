@@ -56,6 +56,6 @@ When adding or updating a skill:
 
 Always verify before finishing:
 ```bash
-npm run validate
+npm run update-skills
 ```
-This runs both the custom metadata audit and Anthropic's native `claude plugin validate` on plugin and marketplace manifests.
+Auto-fixes missing SKILL.md metadata, runs Anthropic's native `claude plugin validate` on plugin and marketplace manifests, then re-audits README.md, ARCHITECTURE.md and plugin.json references. Exits 0 when nothing is left; otherwise prints the remaining problems and an agent prompt.

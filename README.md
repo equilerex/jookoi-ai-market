@@ -12,6 +12,7 @@ Personal plugin marketplace, an optional extension layer on top of [`JooKoi-deve
 | [`jookoi-create-skill`](plugins/jookoi-dev/skills/jookoi-create-skill/SKILL.md) | Create or adapt personal cross-harness skills for `.agents/skills`, removing host assumptions, packaging, and syncing to targets. | New skills start portable, follow established structure, and get installed or linked across environments without ad hoc manual copies. |
 | [`jookoi-write-like-a-person`](plugins/jookoi-dev/skills/jookoi-write-like-a-person/SKILL.md) | Tone rules for replies and people-facing text: emails, messages, non-technical explanations. Audience-neutral. | Portable across projects, shareable without an engineer-specific voice baked in. |
 | [`jookoi-write-casual-technical`](plugins/jookoi-dev/skills/jookoi-write-casual-technical/SKILL.md) | Tone rules for technical `.md` documentation: README, architecture notes, another SKILL.md. Engineer voice. | Docs read like an engineer wrote them, not an assistant. |
+| [`jookoi-md-design`](plugins/jookoi-dev/skills/jookoi-md-design/SKILL.md) | Design skill for `.md` files: layout, content blocks, spacing and visual flow, with a themed component library (hero, badges, feature grids, callouts, diagrams) and a badge catalogue. Agent-facing files get design through structure only. Pairs with `jookoi-write-casual-technical`, which owns the words. See its [README](plugins/jookoi-dev/skills/jookoi-md-design/README.md) for provenance. | Models write plain markdown fine on their own, but can't design a page: layouts come out as walls of text or a random badge wall. |
 | [`jookoi-vue3-vibe-code`](plugins/jookoi-dev/skills/jookoi-vue3-vibe-code/SKILL.md) | Default architecture for a fast Vue 3 prototype: CDN-loaded, no build step, no `.vue` files. | Skips bundler setup for MVPs, dashboards, quick internal tools. |
 | [`jookoi-angular-performance`](plugins/jookoi-dev/skills/jookoi-angular-performance/SKILL.md) | Audits and fixes Angular app performance: bundle budgets, lazy routes, `@defer`, images, OnPush/signals/zoneless, SSR/hydration, Core Web Vitals. Ships a zero-dependency static audit script. Baseline Angular 22, see its [README](plugins/jookoi-dev/skills/jookoi-angular-performance/README.md) for provenance. | Without it, "optimize this" gets OnPush sprinkled everywhere regardless of the real bottleneck, and APIs recommended by stale names. |
 | [`jookoi-fastled`](plugins/jookoi-dev/skills/jookoi-fastled/SKILL.md) | Writing LED animations with FastLED that look good to a human, plus the filter chain for audio-reactive effects. See its [README](plugins/jookoi-dev/skills/jookoi-fastled/README.md) for provenance. | LED effect code generated without it is reliably ugly: full white, every pixel at saturation 255, `delay()` in the loop. None of those are API errors, so nothing catches them. |
@@ -28,6 +29,7 @@ plugins/
         ├── jookoi-create-skill/           # copied from baseline, portable skill creation workflow
         ├── jookoi-write-like-a-person/    # audience-neutral tone, replies and people-facing text
         ├── jookoi-write-casual-technical/ # engineer voice, technical .md documentation
+        ├── jookoi-md-design/              # design: layout, components, visual flow of .md files
         ├── jookoi-vue3-vibe-code/         # for fast prototypes with html, js and cdn.
         ├── jookoi-fastled/                # Led animation framework usage instructions to build aestetically pleasing effects
         └── jookoi-angular-performance/    # Angular perf audit: measure, fix by symptom, version-aware
@@ -62,6 +64,7 @@ gemini skills install https://github.com/equilerex/jookoi-ai-market --path plugi
 gemini skills install https://github.com/equilerex/jookoi-ai-market --path plugins/jookoi-dev/skills/jookoi-create-skill --consent
 gemini skills install https://github.com/equilerex/jookoi-ai-market --path plugins/jookoi-dev/skills/jookoi-write-like-a-person --consent
 gemini skills install https://github.com/equilerex/jookoi-ai-market --path plugins/jookoi-dev/skills/jookoi-write-casual-technical --consent
+gemini skills install https://github.com/equilerex/jookoi-ai-market --path plugins/jookoi-dev/skills/jookoi-md-design --consent
 gemini skills install https://github.com/equilerex/jookoi-ai-market --path plugins/jookoi-dev/skills/jookoi-vue3-vibe-code --consent
 gemini skills install https://github.com/equilerex/jookoi-ai-market --path plugins/jookoi-dev/skills/jookoi-fastled --consent
 gemini skills install https://github.com/equilerex/jookoi-ai-market --path plugins/jookoi-dev/skills/jookoi-angular-performance --consent
@@ -75,4 +78,4 @@ gemini skills install https://github.com/equilerex/jookoi-ai-market --path plugi
 
 - `JooKoi-developer-stack` works standalone, with no knowledge this repo exists.
 - Skills here are copies, not moves. Source of truth for baseline-universal ones (`jookoi-paper-trail`, `jookoi-create-skill`, `jookoi-write-like-a-person`, `jookoi-write-casual-technical`) is `JooKoi-developer-stack/my-global-setup/.agents/skills/`. Updates made there don't auto-propagate here, re-copy by hand when a baseline skill changes and this plugin should pick it up.
-- `jookoi-vue3-vibe-code`, `jookoi-fastled`, and `jookoi-angular-performance` are domain-specific, added directly here as this plugin's own content.
+- `jookoi-md-design`, `jookoi-vue3-vibe-code`, `jookoi-fastled`, and `jookoi-angular-performance` are domain-specific, added directly here as this plugin's own content.

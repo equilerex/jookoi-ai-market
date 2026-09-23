@@ -16,16 +16,17 @@ function parseArgs() {
   const args = process.argv.slice(2)
   const launchIdx = args.indexOf('--launch')
   const promptIdx = args.indexOf('--prompt')
-  const fixMetadata = args.includes('--fix-metadata')
-  const runClaudeValidate = args.includes('--validate-plugin')
+  const update = args.includes('--update')
+  const fixMetadata = update || args.includes('--fix-metadata')
+  const runClaudeValidate = update || args.includes('--validate-plugin')
 
   let launchAgent = null
   if (launchIdx !== -1 && args[launchIdx + 1]) {
     launchAgent = args[launchIdx + 1]
   }
 
-  const printPrompt = promptIdx !== -1 || (launchIdx !== -1 && !launchAgent)
-  return { launchAgent, printPrompt, fixMetadata, runClaudeValidate }
+  const printPrompt = update || promptIdx !== -1 || (launchIdx !== -1 && !launchAgent)
+  return { launchAgent, printPrompt, fixMetadata, runClaudeValidate, update }
 }
 
 function parseYamlFrontmatter(content) {
@@ -392,7 +393,28 @@ function runClaudeValidation() {
 }
 
 function main() {
-  const { launchAgent, printPrompt, fixMetadata, runClaudeValidate } = parseArgs()
+  const { launchAgent, printPrompt, fixMetadata, runClaudeValidate, update } = parseArgs()
+
+  if (update) {
+    // Fix what can be fixed mechanically, then re-audit for what is left, then validate manifests.
+    auditMarketplace({ fixMetadata: true })
+    const nativePassed = runClaudeValidation()
+    const remaining = auditMarketplace()
+    if (remaining.length === 0) {
+      console.log('\nUpdate complete: nothing left to fix.')
+      process.exit(nativePassed ? 0 : 1)
+    }
+    console.log(`\nFound issues across ${remaining.length} skill(s) that need an agent or a manual edit:\n`)
+    for (const item of remaining) {
+      console.log(`[${item.skill}] in ${item.plugin}:`)
+      for (const issue of item.issues) console.log(`  - ${issue}`)
+      console.log()
+    }
+    console.log('--- Suggested Agent Prompt ---')
+    console.log(buildPrompt(remaining))
+    console.log('------------------------------')
+    process.exit(1)
+  }
 
   if (runClaudeValidate) {
     const passed = runClaudeValidation()
@@ -428,6 +450,7 @@ function main() {
     console.log('------------------------------')
   } else {
     console.log('Options:')
+    console.log('  --update              Fix metadata, validate manifests, print agent prompt for the rest')
     console.log('  --fix-metadata        Auto-insert metadata credit block (author, repository) into SKILL.md')
     console.log('  --validate-plugin     Run native claude plugin validate on manifests')
     console.log('  --prompt              Print agent prompt to fix issues')

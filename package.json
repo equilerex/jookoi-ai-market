@@ -2,14 +2,19 @@
   "name": "jookoi-ai-market",
   "private": true,
   "scripts": {
-    "// paper-trail-status": "paper-trail status: TODO.md checklist counts, last flush date",
-    "paper-trail-status": "node -e \"require('child_process').execFileSync('node',[require('path').join(require('os').homedir(),'.agents/skills/jookoi-paper-trail/scripts/jookoi-paper-trail.js'),'status'],{stdio:'inherit'})\"",
+    "// start": "Launches Claude Code with plugins/jookoi-dev loaded from disk for this session only. Nothing is installed. Use to try a skill change before committing. Restart to pick up edits.",
+    "start": "claude --plugin-dir plugins/jookoi-dev",
 
-    "// paper-trail-check": "paper-trail check: validate _architecture/ managed files",
-    "paper-trail-check": "node -e \"require('child_process').execFileSync('node',[require('path').join(require('os').homedir(),'.agents/skills/jookoi-paper-trail/scripts/jookoi-paper-trail.js'),'check'],{stdio:'inherit'})\"",
-    "check-skills": "node scripts/check-marketplace-skills.mjs",
-    "validate": "node scripts/check-marketplace-skills.mjs --validate-plugin",
-    "fix-metadata": "node scripts/check-marketplace-skills.mjs --fix-metadata",
-    "sync-skills": "node scripts/check-marketplace-skills.mjs --prompt"
+    "// install:plugin": "Installs the plugin from this local checkout: registers the repo as a marketplace, then installs jookoi-dev@jookoi-ai-market. Persists across sessions. Use on a new machine, or to install from the working copy instead of GitHub.",
+    "install:plugin": "claude plugin marketplace add . && claude plugin install jookoi-dev@jookoi-ai-market",
+
+    "// sync": "Copies the latest skills from plugins/*/skills/ into the folders in SKILL_TARGETS (.env, defaults to ~/.agents/skills and ~/.claude/skills; see .env.example). Run after pulling, or after editing a skill here. Skips identical skills, and skips (exit 1) any target copy that is newer than this repo's unless you pass `-- --force`. Preview with `-- --dry-run`. Never deletes other skills in the targets.",
+    "sync": "node scripts/sync-skills.mjs",
+
+    "// sync:force": "Same as sync, but overwrites target copies even when they are newer than this repo's. Use when sync reports skipped skills and you want the repo version to win.",
+    "sync:force": "node scripts/sync-skills.mjs --force",
+
+    "// update-skills": "The one command to run after adding, renaming or editing a skill (and before finishing, per AGENTS.md). Auto-fixes missing SKILL.md metadata, runs `claude plugin validate` on every plugin and the marketplace manifest, then re-audits. If README.md, ARCHITECTURE.md or plugin.json still miss a skill, prints the problems plus a ready-made agent prompt and exits 1. Exits 0 when nothing is left. Needs the `claude` CLI on PATH.",
+    "update-skills": "node scripts/check-marketplace-skills.mjs --update"
   }
 }
