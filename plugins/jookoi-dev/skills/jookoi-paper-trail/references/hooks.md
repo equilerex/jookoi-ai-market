@@ -24,9 +24,9 @@ Blocks only when **all three** hold:
 
 1. the harness is not already mid-block (`stop_hook_active` is not `true`);
 2. `git status --porcelain` is non-empty — a session that changed nothing has nothing to record;
-3. Neither `items.json` nor `TODO.md` has an uncommitted modification this session.
+3. `items.yaml` has no uncommitted modification this session.
 
-Touching either file clears condition 3, so the gate is self-clearing and cannot loop on itself. The nudge is "update the store or Context header," not "flush" — a session can update the store every turn and never flush for days, and that is the intended steady state.
+Touching `items.yaml` clears condition 3, so the gate is self-clearing and cannot loop on itself. The nudge is "update the store," not "flush" — a session can update the store every turn and never flush for days, and that is the intended steady state.
 
 **Condition 1 is not optional.** Without it the gate blocks every turn up to Claude Code's cap (8 by default, `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP`), and on a harness with no cap it hangs the session outright.
 
@@ -48,8 +48,9 @@ That file is a coarse recovery record, separate from the store and separate from
 
 `SessionStart` fires after the context has shrunk and **can** inject. It emits, as `additionalContext`:
 
-- `TODO.md`'s `## Context` and the `list` output (now items plus the latest done), for each layer;
-- a one-line notice if `_jookoi-architecture/session-log.md` has undrained content.
+- the `list` output (now items plus the latest done), for each layer;
+- a one-line notice if `_jookoi-architecture/session-log.md` has undrained content;
+- pointers, no rules content: change items only through the script, name items as `id title`, `show <id>` for a body, `list --archived --last N` for older items, `find` before adding, and do not read `plans/decision-history/` unless a doc cites it or the user asks why.
 
 
 Matching on the compaction source keeps a fresh startup from paying for a rehydrate it does not need — but injecting on `startup` and `resume` too is cheap and means a cold session begins with the working set already in hand.

@@ -6,7 +6,8 @@ Status: DECIDED
 
 <!-- Status is one of: DECIDED | TRIAL | REJECTED | DEFERRED | SUPERSEDED
      A superseding decision gets its own number. The superseded file's status changes
-     and its body gains a pointer — it is never edited away or deleted.
+     and its body gains a pointer. A decision already stated in ARCHITECTURE.md or
+     AGENTS.md is folded in and the file deleted instead.
      All five sections below are required. -->
 
 ## Problem

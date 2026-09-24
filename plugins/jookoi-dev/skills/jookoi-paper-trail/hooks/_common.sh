@@ -10,7 +10,8 @@ SKILL_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 ARCH="$REPO_ROOT/_architecture"
 PRIV="$REPO_ROOT/_jookoi-architecture"
-DOC="node $SKILL_DIR/scripts/jookoi-paper-trail.js"
+# A function, not a string, so a skill path with spaces (C:UsersFirst Last) survives.
+doc() { node "$SKILL_DIR/scripts/jookoi-paper-trail.js" "$@"; }
 
 # Which harness are we running under. Override with JOOKOI_HARNESS.
 harness() {

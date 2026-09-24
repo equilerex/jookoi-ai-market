@@ -25,7 +25,7 @@ Never walk above the repo root. A folder with no `CONTEXT.md` is not a defect �
 A folder's `CONTEXT.md` dies with the folder. That rule is safe only if the content really was folder-local, so before removing:
 
 1. **Report inbound references.** `grep` for the folder path and for the `CONTEXT.md` path across the repo. Links from `_architecture/` or from sibling context files break silently otherwise.
-2. **Offer the durable half for promotion.** A "Why it's built this way" or "Don't" entry that explains a repo-wide decision was mis-filed, not folder-local. Move it to `ARCHITECTURE.md`, or to a decision record if it was a call with alternatives. Delete only what genuinely dies with the code.
+2. **Offer the durable half for promotion.** A "Why it's built this way" or "Don't" entry that explains a repo-wide decision was mis-filed, not folder-local. Move it to `ARCHITECTURE.md`, or to `plans/decision-history/` if it was a call with alternatives. Delete only what genuinely dies with the code.
 3. **Then delete.** With the folder, in the same change.
 
 Never delete a `CONTEXT.md` while its folder stays. If the file is wrong, correct it; if it is empty, that is a signal the folder never needed one, and removing it is fine — but say so rather than doing it silently.
@@ -61,7 +61,7 @@ Every file type in `references/file-formats.md` has a fixed section set. An upda
 
 **Never regenerate a file to change a section.** Regeneration silently drops content the current session did not happen to be thinking about, and it is invisible in review because the whole file shows as changed. The templates in `assets/templates/` are for creating a file that does not exist — not for refreshing one that does.
 
-`TODO.md`'s `## Context` is *meant* to be replaced wholesale, in place, whenever it goes stale, not edited clause by clause. Work items are not files to edit: use the script commands in `references/store-format.md`.
+Work items are not files to edit: use the script commands in `references/store-format.md`.
 
 ---
 

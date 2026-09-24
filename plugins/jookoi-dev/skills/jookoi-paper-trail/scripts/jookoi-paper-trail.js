@@ -1,36 +1,44 @@
 #!/usr/bin/env node
 // jookoi-paper-trail — working-set store and context-file mechanics.
-// Design: _architecture/plans/2026-09-19-paper-trail-v2-keyed-store-todo-backlog-decisions-decision-l.md
+// Design: _architecture/plans/2026-09-24-remove-todo-md-route-by-information-type.md
 // Spec:   ../references/store-format.md, ../references/file-formats.md
 //
 // Usage:
 //   jookoi-paper-trail list [--status=S] [--since=DATE] [--stale=DAYS]   default: now items + 3 latest done
+//   jookoi-paper-trail list --archived [--last N]           flushed items, newest first (default 10)
 //   jookoi-paper-trail find "<text>"                        every status plus the archive
-//   jookoi-paper-trail show <id>
+//   jookoi-paper-trail show <id>                            resolves archived ids too
 //   jookoi-paper-trail count                                counts per status, last flush
-//   jookoi-paper-trail render [--status=S]                  store as markdown
-//   jookoi-paper-trail add "<markdown>" [--status=now|parked] [placement]
+//   jookoi-paper-trail render [--status=S]                  store as markdown, ids carry the repo prefix
+//   jookoi-paper-trail add --title "<t>" | - | --file F     payload: YAML/JSON {title, body, status, priority, after, before, first, last}
 //   jookoi-paper-trail done|park|start|drop <id>
-//   jookoi-paper-trail edit <id> "<markdown>"
+//   jookoi-paper-trail edit <id> --title "<t>" | - | --file F   payload keys given replace the item's
 //   jookoi-paper-trail move <id> <placement>                placement: --after=ID --before=ID --first --last
-//   jookoi-paper-trail flush [--before=DATE]                done+dropped -> archive/items-YYYY-MM.json
+//   jookoi-paper-trail flush [--before=DATE]                done+dropped -> archive/items-YYYY-MM.yaml
 //   jookoi-paper-trail stale [DAYS]                         stale now items, plus CONTEXT.md files behind their folder
 //   jookoi-paper-trail check                                validate the store and managed files
-//   jookoi-paper-trail new-decision "<title>"               next NNN from template
+//   jookoi-paper-trail new-decision "<title>"               next NNN in plans/decision-history/, listed in index.md
 //   jookoi-paper-trail new-plan "<topic>"                   dated plan file from template
 //
 // Global flags: --private (operate on _jookoi-architecture/), --root <path>, --dry-run
 //
-// This script is the only writer of items.json. Judgement (what happened, where it
-// belongs, what TODO.md's Context header says) stays with the model.
+// This script is the only writer of items.yaml. Judgement (what happened, where it
+// belongs) stays with the model.
 
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 const { execSync } = require("child_process");
+const yaml = require("./vendor/js-yaml.cjs.js");
 
 const TEMPLATES = path.join(__dirname, "..", "assets", "templates");
 const STATUSES = ["now", "parked", "done", "dropped"];
 const STEP = 1000;
+// Dump with the schema load uses, and never fold long lines.
+const YAML_OPTS = { schema: yaml.CORE_SCHEMA, lineWidth: -1, noRefs: true };
+// Starts with a letter and holds a digit, so YAML never reads an id as a number, boolean or null.
+const INDEX_PLACEHOLDER = "one line on what it explains.";
+const ID_RE =/^[a-z][a-z0-9]*[0-9][a-z0-9]*$/;
 
 class Refusal extends Error {}
 function refuse(where, detail) {
@@ -64,7 +72,7 @@ function today() {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
-// Full timestamp for items.json's ts_* fields. ISO 8601, UTC, seconds precision.
+// Full timestamp for items.yaml's ts_* fields. ISO 8601, UTC, seconds precision.
 function nowISO() {
   return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
 }
@@ -82,83 +90,168 @@ function euroToISODate(s) {
   return m ? `${m[3]}-${m[2]}-${m[1]}` : null;
 }
 
+// Repo-relative path with forward slashes, the same on Windows and Unix.
+function rel(root, file) {
+  return path.relative(root, file).split(path.sep).join("/");
+}
+
 function slugify(s) {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
 }
 
+// Templates are normalized to LF so generated files do not depend on the checkout's line endings.
 function template(name) {
-  return fs.readFileSync(path.join(TEMPLATES, name), "utf8");
+  return fs.readFileSync(path.join(TEMPLATES, name), "utf8").replace(/\r\n/g, "\n");
 }
 
 // ---------------------------------------------------------------------- store
 
-function emptyStore() {
-  return { next_id: 1, last_flush: null, items: {} };
+// Default repo prefix: the root folder's leaf name. Written once when the file is
+// created and never derived again, so a clone in a differently named folder keeps it.
+function repoName(root) {
+  return path.basename(root).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "repo";
+}
+
+function emptyStore(ctx) {
+  return { repo: repoName(ctx.root), last_flush: null, items: {} };
+}
+
+function parseYaml(file, text) {
+  try {
+    return yaml.load(text, { schema: yaml.CORE_SCHEMA });
+  } catch (e) {
+    refuse(file, `not valid YAML (${e.message.split("\n")[0]}) -- fix by hand`);
+  }
+}
+
+function checkItem(file, id, it) {
+  if (!ID_RE.test(id)) refuse(file, `${id}: ids start with a letter and contain a digit`);
+  if (!it || typeof it !== "object") refuse(file, `${id}: not a mapping`);
+  if (!STATUSES.includes(it.status)) refuse(file, `${id}: status ${JSON.stringify(it.status)} outside ${STATUSES.join(" | ")}`);
+  if (typeof it.title !== "string" || !it.title.trim() || it.title.includes("\n")) refuse(file, `${id}: title must be a non-empty single line`);
+  if (it.body !== undefined && it.body !== null && typeof it.body !== "string") refuse(file, `${id}: body must be a string`);
+  if (typeof it.priority !== "number") refuse(file, `${id}: priority must be a number`);
 }
 
 function loadStore(ctx) {
-  const file = path.join(ctx.arch, "items.json");
-  if (!fs.existsSync(file)) return { file, raw: null, store: emptyStore() };
+  const file = path.join(ctx.arch, "items.yaml");
+  if (!fs.existsSync(file)) return { file, raw: null, store: emptyStore(ctx) };
   const raw = fs.readFileSync(file, "utf8");
-  let store;
-  try {
-    store = JSON.parse(raw);
-  } catch (e) {
-    refuse(file, `not valid JSON (${e.message}) -- fix by hand`);
+  const store = parseYaml(file, raw);
+  if (!store || typeof store !== "object" || !store.items || typeof store.items !== "object" || typeof store.repo !== "string") {
+    refuse(file, "expected a mapping with repo: and items:");
   }
-  if (!store || typeof store !== "object" || typeof store.items !== "object" || !Number.isInteger(store.next_id)) {
-    refuse(file, 'expected {"next_id": <int>, "items": {...}}');
-  }
-  for (const [id, it] of Object.entries(store.items)) {
-    if (!STATUSES.includes(it.status)) refuse(file, `${id}: status ${JSON.stringify(it.status)} outside ${STATUSES.join(" | ")}`);
-    if (!Array.isArray(it.content) || !it.content.length) refuse(file, `${id}: content must be a non-empty array of lines`);
-    if (typeof it.priority !== "number") refuse(file, `${id}: priority must be a number`);
-  }
+  for (const [id, it] of Object.entries(store.items)) checkItem(file, id, it);
   return { file, raw, store };
 }
 
 // Read-modify-write with a compare against what was read; a mismatch means a
 // concurrent writer (terminal vs. agent) and is refused rather than merged.
-function saveStore(ctx, loaded) {
+function assertUnchanged(loaded) {
   const current = fs.existsSync(loaded.file) ? fs.readFileSync(loaded.file, "utf8") : null;
   if (current !== loaded.raw) refuse(loaded.file, "changed on disk while this command ran -- re-run it");
-  ctx.write(loaded.file, JSON.stringify(loaded.store, null, 2) + "\n");
 }
 
-function normalizeId(input) {
-  const m = String(input || "").match(/^t?(\d+)$/i);
-  return m ? "t" + m[1].padStart(3, "0") : null;
+function saveStore(ctx, loaded) {
+  assertUnchanged(loaded);
+  ctx.write(loaded.file, yaml.dump(loaded.store, YAML_OPTS));
 }
 
-function getItem(store, input) {
-  const id = normalizeId(input);
-  if (!id) refuse("id", `${JSON.stringify(input)} is not an item id (expected e.g. t017)`);
-  const item = store.items[id];
-  if (!item) refuse("id", `${id} does not exist in the store (it may have been flushed to the archive -- try: find)`);
-  return { id, item };
+function archiveFiles(ctx) {
+  const dir = path.join(ctx.arch, "archive");
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir).filter((f) => /^items-\d{4}-\d{2}\.yaml$/.test(f)).sort().map((f) => path.join(dir, f));
+}
+
+function loadArchive(file) {
+  const arch = parseYaml(file, fs.readFileSync(file, "utf8"));
+  if (!arch || !arch.items || typeof arch.items !== "object") refuse(file, "expected a mapping with items:");
+  for (const [id, it] of Object.entries(arch.items)) checkItem(file, id, it);
+  return arch;
+}
+
+function archivedEntries(ctx) {
+  const out = [];
+  archiveFiles(ctx).forEach((f) => Object.entries(loadArchive(f).items).forEach(([id, it]) => out.push([id, it, f])));
+  return out;
+}
+
+// Accepts `k4f9`, `repo:k4f9`, and the legacy `t017` / `t17` forms.
+function normalizeId(store, input) {
+  let s = String(input || "").trim().toLowerCase();
+  const colon = s.indexOf(":");
+  if (colon !== -1) {
+    const prefix = s.slice(0, colon);
+    if (prefix !== store.repo) refuse("id", `${JSON.stringify(input)} belongs to repo "${prefix}", this repo is "${store.repo}"`);
+    s = s.slice(colon + 1);
+  }
+  const legacy = s.match(/^t(\d+)$|^(\d+)$/);
+  if (legacy) return "t" + (legacy[1] || legacy[2]).padStart(3, "0");
+  return ID_RE.test(s) ? s : null;
+}
+
+// Active items resolve always. Archived items resolve only for read commands.
+function getItem(ctx, store, input, { archived = false } = {}) {
+  const id = normalizeId(store, input);
+  if (!id) refuse("id", `${JSON.stringify(input)} is not an item id (expected e.g. k4f9)`);
+  if (store.items[id]) return { id, item: store.items[id] };
+  const hit = archivedEntries(ctx).find(([aid]) => aid === id);
+  if (hit && archived) return { id, item: hit[1], file: hit[2] };
+  if (hit) refuse("id", `${label(id, hit[1])} is flushed to ${path.basename(hit[2])} and read-only -- use show or find`);
+  refuse("id", `${id} does not exist`);
+}
+
+// Random base36, no counter. Collision-checked against the active file and every archive file.
+function newId(ctx, store) {
+  const taken = new Set(Object.keys(store.items));
+  archivedEntries(ctx).forEach(([id]) => taken.add(id));
+  for (;;) {
+    const id = crypto.randomBytes(4).readUInt32BE(0).toString(36).padStart(4, "a").slice(-4);
+    if (ID_RE.test(id) && !taken.has(id)) return id;
+  }
 }
 
 function byPriority(a, b) {
   return a[1].priority - b[1].priority || a[0].localeCompare(b[0]);
 }
 
-function title(item) {
-  return item.content[0];
+// Every user-facing mention of an item is `id title`, never a bare id.
+function label(id, item) {
+  return `${id} ${item.title}`;
 }
 
 function line(id, item) {
   const box = item.status === "done" ? "[x]" : item.status === "dropped" ? "[-]" : "[ ]";
-  return `- ${box} \`${id}\` ${title(item)}`;
+  return `- ${box} ${label(id, item)}`;
 }
 
-function toLines(markdown) {
-  const lines = String(markdown).replace(/\r\n/g, "\n").replace(/^\n+|\n+$/g, "").split("\n");
-  if (!lines[0]) refuse("content", "empty -- the first line is the item title");
-  return lines;
+function cleanBody(s) {
+  return String(s == null ? "" : s).replace(/\r\n/g, "\n").replace(/^\n+|\n+$/g, "");
+}
+
+// Payload for add/edit: `-` (stdin) or --file carry YAML (JSON is valid YAML). --title alone is a title-only item.
+function readPayload(args, opts) {
+  let text = null;
+  if (args[0] === "-") text = fs.readFileSync(0, "utf8");
+  else if (opts.file) text = fs.readFileSync(path.resolve(opts.file), "utf8");
+  let p = {};
+  if (text !== null) {
+    p = parseYaml("payload", text);
+    if (!p || typeof p !== "object" || Array.isArray(p)) refuse("payload", "expected a YAML mapping with title, body, status, priority");
+  }
+  const allowed = ["title", "body", "status", "priority", "after", "before", "first", "last"];
+  Object.keys(p).forEach((k) => { if (!allowed.includes(k)) refuse("payload", `unknown key ${k} (allowed: ${allowed.join(", ")})`); });
+  if (opts.title !== undefined) p.title = opts.title;
+  if (p.title !== undefined) {
+    p.title = String(p.title).trim();
+    if (!p.title || p.title.includes("\n")) refuse("title", "must be a non-empty single line");
+  }
+  if (p.body !== undefined) p.body = cleanBody(p.body);
+  return p;
 }
 
 // Placement computes a priority from a neighbour the caller already saw in `list`.
-function placement(store, opts, excludeId) {
+function placement(ctx, store, opts, excludeId) {
   const others = Object.entries(store.items).filter(([id]) => id !== excludeId).sort(byPriority);
   if (opts.priority !== undefined) {
     const n = Number(opts.priority);
@@ -168,7 +261,7 @@ function placement(store, opts, excludeId) {
   if (opts.first) return others.length ? others[0][1].priority - STEP : STEP;
   const ref = opts.after !== undefined ? ["after", opts.after] : opts.before !== undefined ? ["before", opts.before] : null;
   if (ref) {
-    const { id } = getItem(store, ref[1]);
+    const { id } = getItem(ctx, store, ref[1]);
     const i = others.findIndex(([oid]) => oid === id);
     if (i === -1) refuse("placement", `cannot place ${excludeId} relative to itself`);
     const p = others[i][1].priority;
@@ -180,7 +273,18 @@ function placement(store, opts, excludeId) {
 
 // ------------------------------------------------------------- store commands
 
+function byDoneDesc(a, b) {
+  return (b[1].ts_done || "").localeCompare(a[1].ts_done || "") || b[0].localeCompare(a[0]);
+}
+
 function cmdList(ctx, _args, opts) {
+  if (opts.archived) {
+    const n = opts.last === undefined ? 10 : Number(opts.last);
+    if (!Number.isInteger(n) || n < 1) refuse("--last", "needs a positive whole number");
+    const picked = archivedEntries(ctx).sort(byDoneDesc).slice(0, n);
+    if (!picked.length) return ctx.report("(none)");
+    return picked.forEach(([id, it, f]) => ctx.report(`${line(id, it)}  (${path.basename(f)})`));
+  }
   const { store } = loadStore(ctx);
   const entries = Object.entries(store.items).sort(byPriority);
   let picked;
@@ -193,13 +297,10 @@ function cmdList(ctx, _args, opts) {
     if (!STATUSES.includes(opts.status)) refuse("--status", `${opts.status} is outside ${STATUSES.join(" | ")}`);
     picked = entries.filter(([, it]) => it.status === opts.status);
     if (opts.since) picked = picked.filter(([, it]) => (it.ts_done || it.ts_touched || "") >= opts.since);
-    if (opts.status === "done") picked.sort((a, b) => (b[1].ts_done || "").localeCompare(a[1].ts_done || "") || b[0].localeCompare(a[0]));
+    if (opts.status === "done") picked.sort(byDoneDesc);
   } else {
     const now = entries.filter(([, it]) => it.status === "now");
-    const done = entries
-      .filter(([, it]) => it.status === "done")
-      .sort((a, b) => (b[1].ts_done || "").localeCompare(a[1].ts_done || "") || b[0].localeCompare(a[0]))
-      .slice(0, 3);
+    const done = entries.filter(([, it]) => it.status === "done").sort(byDoneDesc).slice(0, 3);
     picked = now.concat(done);
   }
   if (!picked.length) return ctx.report("(none)");
@@ -211,10 +312,8 @@ function daysBetween(from, to) {
   return Math.floor((Date.parse(to) - Date.parse(from)) / 86400000);
 }
 
-function archiveFiles(ctx) {
-  const dir = path.join(ctx.arch, "archive");
-  if (!fs.existsSync(dir)) return [];
-  return fs.readdirSync(dir).filter((f) => /^items-\d{4}-\d{2}\.json$/.test(f)).sort().map((f) => path.join(dir, f));
+function matches(it, needle) {
+  return `${it.title}\n${it.body || ""}`.toLowerCase().includes(needle);
 }
 
 function cmdFind(ctx, [text]) {
@@ -223,14 +322,10 @@ function cmdFind(ctx, [text]) {
   const { store } = loadStore(ctx);
   let hits = 0;
   Object.entries(store.items).sort(byPriority).forEach(([id, it]) => {
-    if (it.content.join("\n").toLowerCase().includes(needle)) { ctx.report(`${line(id, it)}  (${it.status})`); hits++; }
+    if (matches(it, needle)) { ctx.report(`${line(id, it)}  (${it.status})`); hits++; }
   });
-  archiveFiles(ctx).forEach((f) => {
-    let arch;
-    try { arch = JSON.parse(fs.readFileSync(f, "utf8")); } catch { refuse(f, "not valid JSON"); }
-    Object.entries(arch.items || {}).forEach(([id, it]) => {
-      if (it.content.join("\n").toLowerCase().includes(needle)) { ctx.report(`${line(id, it)}  (archived: ${path.basename(f)})`); hits++; }
-    });
+  archivedEntries(ctx).forEach(([id, it, f]) => {
+    if (matches(it, needle)) { ctx.report(`${line(id, it)}  (archived: ${path.basename(f)})`); hits++; }
   });
   const legacy = path.join(ctx.arch, "archive");
   if (fs.existsSync(legacy)) {
@@ -245,11 +340,11 @@ function cmdFind(ctx, [text]) {
 
 function cmdShow(ctx, [id]) {
   const { store } = loadStore(ctx);
-  const found = getItem(store, id);
+  const found = getItem(ctx, store, id, { archived: true });
   const it = found.item;
-  ctx.report(`${found.id}  ${it.status}  created ${it.ts_created || "?"}  started ${it.ts_started || "-"}  done ${it.ts_done || "-"}  touched ${it.ts_touched || "?"}`);
-  ctx.report("");
-  it.content.forEach((l) => ctx.report(l));
+  ctx.report(`${label(found.id, it)}`);
+  ctx.report(`${it.status}${found.file ? ` (archived: ${path.basename(found.file)})` : ""}  created ${it.ts_created || "?"}  started ${it.ts_started || "-"}  done ${it.ts_done || "-"}  touched ${it.ts_touched || "?"}`);
+  if (it.body) { ctx.report(""); ctx.report(it.body); }
 }
 
 function cmdCount(ctx) {
@@ -257,9 +352,7 @@ function cmdCount(ctx) {
   const counts = Object.fromEntries(STATUSES.map((s) => [s, 0]));
   Object.values(store.items).forEach((it) => counts[it.status]++);
   ctx.report(STATUSES.map((s) => `${s} ${counts[s]}`).join("  "));
-  let archived = 0;
-  archiveFiles(ctx).forEach((f) => { archived += Object.keys(JSON.parse(fs.readFileSync(f, "utf8")).items || {}).length; });
-  ctx.report(`archived ${archived}  last flush ${store.last_flush || "never"}`);
+  ctx.report(`archived ${archivedEntries(ctx).length}  last flush ${store.last_flush || "never"}`);
 }
 
 function cmdRender(ctx, _args, opts) {
@@ -272,73 +365,77 @@ function cmdRender(ctx, _args, opts) {
     if (!entries.length) return;
     out.push(`## ${s}`, "");
     entries.forEach(([id, it]) => {
-      out.push(`### \`${id}\` ${title(it)}`, "");
-      const body = it.content.slice(1).join("\n").replace(/^\n+|\n+$/g, "");
-      if (body) out.push(body, "");
+      out.push(`### ${store.repo}:${label(id, it)}`, "");
+      if (it.body) out.push(it.body, "");
     });
   });
   ctx.report(out.length ? out.join("\n").replace(/\n+$/, "") : "(empty)");
 }
 
-function cmdAdd(ctx, [markdown], opts) {
-  if (!markdown) refuse("add", 'needs "<markdown>" (first line is the title)');
-  const status = opts.status || "now";
-  if (status !== "now" && status !== "parked") refuse("add", "--status must be now or parked");
+function cmdAdd(ctx, args, opts) {
+  const p = readPayload(args, opts);
+  if (!p.title) refuse("add", "needs a title: --title \"...\", or a payload on stdin (-) or --file with a title key");
+  const status = p.status || opts.status || "now";
+  if (status !== "now" && status !== "parked") refuse("add", "status must be now or parked");
   const loaded = loadStore(ctx);
   const { store } = loaded;
-  const id = "t" + String(store.next_id).padStart(3, "0");
+  const id = newId(ctx, store);
   const d = nowISO();
   store.items[id] = {
-    content: toLines(markdown),
+    title: p.title,
     status,
-    priority: placement(store, opts, id),
+    priority: placement(ctx, store, { ...p, ...opts }, id),
+    body: p.body || "",
     ts_created: d,
     ts_started: status === "now" ? d : null,
     ts_done: null,
     ts_touched: d,
   };
-  store.next_id++;
   saveStore(ctx, loaded);
-  ctx.report(`${id} added (${status})`);
+  ctx.report(`${label(id, store.items[id])} added (${status})`);
 }
 
 function cmdTransition(target) {
   return (ctx, [id]) => {
     const loaded = loadStore(ctx);
-    const { id: realId, item } = getItem(loaded.store, id);
+    const { id: realId, item } = getItem(ctx, loaded.store, id);
     const d = nowISO();
     item.status = target;
     item.ts_touched = d;
     item.ts_done = target === "done" ? d : null;
     if (target === "now" && !item.ts_started) item.ts_started = d;
     saveStore(ctx, loaded);
-    ctx.report(`${realId} -> ${target}`);
+    ctx.report(`${label(realId, item)} -> ${target}`);
   };
 }
 
-function cmdEdit(ctx, [id, markdown]) {
-  if (!id || !markdown) refuse("edit", 'needs <id> "<markdown>"');
+function cmdEdit(ctx, [id, ...rest], opts) {
+  if (!id) refuse("edit", "needs <id> and a payload: --title, or - / --file");
+  const p = readPayload(rest, opts);
+  if (p.title === undefined && p.body === undefined) refuse("edit", "payload has neither title nor body");
   const loaded = loadStore(ctx);
-  const { id: realId, item } = getItem(loaded.store, id);
-  item.content = toLines(markdown);
+  const { id: realId, item } = getItem(ctx, loaded.store, id);
+  if (p.title !== undefined) item.title = p.title;
+  if (p.body !== undefined) item.body = p.body;
   item.ts_touched = nowISO();
   saveStore(ctx, loaded);
-  ctx.report(`${realId} edited`);
+  ctx.report(`${label(realId, item)} edited`);
 }
 
 function cmdMove(ctx, [id], opts) {
   const loaded = loadStore(ctx);
-  const { id: realId, item } = getItem(loaded.store, id);
+  const { id: realId, item } = getItem(ctx, loaded.store, id);
   if (!["after", "before", "first", "last", "priority"].some((k) => opts[k] !== undefined)) {
     refuse("move", "needs a placement: --after=<id> | --before=<id> | --first | --last");
   }
-  item.priority = placement(loaded.store, opts, realId);
+  item.priority = placement(ctx, loaded.store, opts, realId);
   item.ts_touched = nowISO();
   saveStore(ctx, loaded);
-  ctx.report(`${realId} moved`);
+  ctx.report(`${label(realId, item)} moved`);
 }
 
-// Moves done and dropped items out of the live store. Nothing else is touched.
+// Moves done and dropped items out of the live store into archive/items-YYYY-MM.yaml,
+// one file per month of ts_done. Nothing else is touched.
 function cmdFlush(ctx, _args, opts) {
   const loaded = loadStore(ctx);
   const { store } = loaded;
@@ -348,22 +445,28 @@ function cmdFlush(ctx, _args, opts) {
   );
   if (!moving.length) return ctx.report("nothing to flush");
 
-  const month = today().slice(0, 7);
-  const file = path.join(ctx.arch, "archive", `items-${month}.json`);
-  let arch = { items: {} };
-  if (fs.existsSync(file)) {
-    try { arch = JSON.parse(fs.readFileSync(file, "utf8")); } catch { refuse(file, "not valid JSON -- fix by hand"); }
-    if (!arch.items) refuse(file, 'expected {"items": {...}}');
-  }
+  const archived = new Set(archivedEntries(ctx).map(([id]) => id));
+  moving.forEach(([id, it]) => { if (archived.has(id)) refuse("flush", `${label(id, it)} already exists in an archive file -- ids must never collide`); });
+
+  const byMonth = {};
   moving.forEach(([id, it]) => {
-    if (arch.items[id]) refuse(file, `${id} already archived this month -- ids must never collide`);
-    arch.items[id] = it;
+    const month = (it.ts_done || it.ts_touched || nowISO()).slice(0, 7);
+    (byMonth[month] = byMonth[month] || []).push([id, it]);
   });
-  ctx.write(file, JSON.stringify(arch, null, 2) + "\n");
+  assertUnchanged(loaded); // before any archive file is written, so a refusal leaves nothing duplicated
+  const written = [];
+  Object.entries(byMonth).sort().forEach(([month, group]) => {
+    const file = path.join(ctx.arch, "archive", `items-${month}.yaml`);
+    const arch = fs.existsSync(file) ? loadArchive(file) : { items: {} };
+    group.forEach(([id, it]) => { arch.items[id] = it; });
+    ctx.write(file, yaml.dump(arch, YAML_OPTS));
+    written.push(`archive/items-${month}.yaml`);
+  });
   moving.forEach(([id]) => delete store.items[id]);
   store.last_flush = nowISO();
   saveStore(ctx, loaded);
-  ctx.report(`flushed ${moving.length} item${moving.length === 1 ? "" : "s"} into archive/items-${month}.json: ${moving.map(([id]) => id).join(" ")}`);
+  ctx.report(`flushed ${moving.length} item${moving.length === 1 ? "" : "s"} into ${written.join(", ")}:`);
+  moving.forEach(([id, it]) => ctx.report(line(id, it)));
 }
 
 // ---------------------------------------------------------- stale / check / new
@@ -405,48 +508,58 @@ function cmdStale(ctx, [days]) {
 function cmdCheck(ctx) {
   let problems = 0;
   const say = (m) => { problems++; ctx.report(m); };
+  const guard = (fn) => { try { fn(); } catch (e) { if (e instanceof Refusal) say(e.message); else throw e; } };
 
-  try { loadStore(ctx); } catch (e) { if (e instanceof Refusal) say(e.message); else throw e; }
-  archiveFiles(ctx).forEach((f) => {
-    try { JSON.parse(fs.readFileSync(f, "utf8")); } catch { say(`${path.relative(ctx.root, f)}: not valid JSON`); }
-  });
+  guard(() => loadStore(ctx));
+  archiveFiles(ctx).forEach((f) => guard(() => loadArchive(f)));
 
-  const tFile = path.join(ctx.arch, "TODO.md");
-  if (fs.existsSync(tFile) && !/^## Context$/m.test(fs.readFileSync(tFile, "utf8"))) say('TODO.md: missing "## Context"');
-
-  const dDir = path.join(ctx.arch, "plans", "decisions");
+  const dDir = path.join(ctx.arch, "plans", "decision-history");
   if (fs.existsSync(dDir)) {
     const required = ["Problem", "Options considered", "Decision", "Why not the alternatives", "Next step"];
-    fs.readdirSync(dDir).filter((f) => f.endsWith(".md")).forEach((f) => {
+    const files = fs.readdirSync(dDir).filter((f) => /^\d{3}-.*\.md$/.test(f));
+    files.forEach((f) => {
       const text = fs.readFileSync(path.join(dDir, f), "utf8");
       required.forEach((sec) => {
-        if (!new RegExp(`^## ${sec}$`, "m").test(text)) say(`plans/decisions/${f}: missing "## ${sec}"`);
+        if (!new RegExp(`^## ${sec}\\r?$`, "m").test(text)) say(`plans/decision-history/${f}: missing "## ${sec}"`);
       });
     });
+    const indexFile = path.join(dDir, "index.md");
+    if (!fs.existsSync(indexFile)) { if (files.length) say("plans/decision-history/index.md: missing"); }
+    else {
+      const indexText = fs.readFileSync(indexFile, "utf8");
+      if (indexText.includes(INDEX_PLACEHOLDER)) say("plans/decision-history/index.md: a line still holds the placeholder summary");
+      const linked = [...indexText.matchAll(/^- \[[^\]]*\]\(([^)]+\.md)\)/gm)].map((m) => m[1]);
+      files.forEach((f) => { if (!linked.includes(f)) say(`plans/decision-history/index.md: no line for ${f}`); });
+      linked.forEach((f) => { if (!fs.existsSync(path.join(dDir, f))) say(`plans/decision-history/index.md: line for missing file ${f}`); });
+    }
   }
   ctx.report(problems ? `${problems} problem${problems === 1 ? "" : "s"} -- fix by hand; this script will not rewrite them` : "all managed files conform");
 }
 
 function cmdNewDecision(ctx, [name]) {
   if (!name) refuse("new-decision", "needs a title");
-  const dir = path.join(ctx.arch, "plans", "decisions");
-  if (!ctx.dryRun) fs.mkdirSync(dir, { recursive: true });
+  const dir = path.join(ctx.arch, "plans", "decision-history");
   const used = fs.existsSync(dir)
     ? fs.readdirSync(dir).map((f) => parseInt((f.match(/^(\d{3})-/) || [])[1], 10)).filter(Number.isInteger)
     : [];
   const n = String((used.length ? Math.max(...used) : 0) + 1).padStart(3, "0");
-  const file = path.join(dir, `${n}-${slugify(name)}.md`);
+  const name_ = `${n}-${slugify(name)}.md`;
   const body = template("decision-record.md")
     .replace("# Decision NNN — <Title>", `# Decision ${n} — ${name}`)
     .replace("Date: DD-MM-YYYY HH:MM", `Date: ${nowEuro()}`);
-  ctx.write(file, body);
-  ctx.report(`created plans/decisions/${path.basename(file)}`);
+  ctx.write(path.join(dir, name_), body);
+
+  const indexFile = path.join(dir, "index.md");
+  const header = "# Decision history\n\nBackground on why rules exist. Not rules. Open a file only when a doc cites it or the user asks why.\n\n";
+  const existing = fs.existsSync(indexFile) ? fs.readFileSync(indexFile, "utf8") : header;
+  const eol = existing.includes("\r\n") ? "\r\n" : "\n";
+  ctx.write(indexFile, `${existing.replace(/(\r?\n)*$/, eol)}- [${n} ${name}](${name_}): ${INDEX_PLACEHOLDER}${eol}`);
+  ctx.report(`created plans/decision-history/${name_} and listed it in index.md -- write its one-line summary there`);
 }
 
 function cmdNewPlan(ctx, [topic]) {
   if (!topic) refuse("new-plan", "needs a topic");
   const dir = path.join(ctx.arch, "plans");
-  if (!ctx.dryRun) fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, `${today()}-${slugify(topic)}.md`);
   if (fs.existsSync(file)) refuse(file, "already exists");
   const body = template("plan-session.md")
@@ -478,12 +591,12 @@ const COMMANDS = {
   "new-plan": cmdNewPlan,
 };
 
-const BOOLEAN_FLAGS = ["private", "dry-run", "first", "last"];
+const BOOLEAN_FLAGS = ["private", "dry-run", "first", "archived"];
 
 function main(argv) {
   const cmd = argv[0];
   if (!cmd || cmd === "--help" || cmd === "-h" || !COMMANDS[cmd]) {
-    const usage = fs.readFileSync(__filename, "utf8").split("\n").slice(4, 21).map((l) => l.replace(/^\/\/ ?/, "")).join("\n");
+    const usage = fs.readFileSync(__filename, "utf8").split("\n").slice(4, 22).map((l) => l.replace(/^\/\/ ?/, "")).join("\n");
     console.log(usage);
     process.exit(cmd && !COMMANDS[cmd] ? 1 : 0);
   }
@@ -492,11 +605,14 @@ function main(argv) {
   const positional = [];
   for (let i = 1; i < argv.length; i++) {
     const a = argv[i];
+    if (a === "-") { positional.push(a); continue; }
     if (!a.startsWith("--")) { positional.push(a); continue; }
     const eq = a.indexOf("=");
     const key = (eq === -1 ? a.slice(2) : a.slice(2, eq));
     const camel = key.replace(/-(\w)/, (_, c) => c.toUpperCase());
-    if (BOOLEAN_FLAGS.includes(key)) opts[camel] = true;
+    // `--last` is a placement flag for move and a count for `list --archived --last N`.
+    const isBool = BOOLEAN_FLAGS.includes(key) || (key === "last" && eq === -1 && cmd !== "list");
+    if (isBool) opts[camel] = true;
     else if (eq !== -1) opts[camel] = a.slice(eq + 1);
     else if (i + 1 < argv.length) opts[camel] = argv[++i];
     else { console.error(`Flag needs a value: ${a}`); process.exit(1); }
@@ -510,7 +626,7 @@ function main(argv) {
     dryRun: opts.dryRun,
     report: (m) => lines.push(m),
     write: (file, content) => {
-      if (opts.dryRun) { lines.push(`[dry-run] would write ${path.relative(root, file)}`); return; }
+      if (opts.dryRun) { lines.push(`[dry-run] would write ${rel(root, file)}`); return; }
       fs.mkdirSync(path.dirname(file), { recursive: true });
       fs.writeFileSync(file, content);
     },

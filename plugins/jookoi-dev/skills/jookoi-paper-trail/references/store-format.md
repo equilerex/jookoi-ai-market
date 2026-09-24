@@ -1,41 +1,41 @@
 # Working-set store
 
-The live working set is `_architecture/items.json` (private layer: `_jookoi-architecture/items.json`). It replaces `TODO.md`'s checklist and `BACKLOG.md`. `scripts/jookoi-paper-trail.js` is the only writer: never hand-edit the file, never regenerate it.
+The live working set is `_architecture/items.yaml` (private layer: `_jookoi-architecture/items.yaml`). `scripts/jookoi-paper-trail.js` is the only writer: never hand-edit the file, never regenerate it.
 
 ```
 _architecture/
-  items.json                    live store: now, parked, done, dropped
-  archive/items-YYYY-MM.json    flushed items, one file per month
-  TODO.md                       only the `## Context` prose header
+  items.yaml                    active set: now, parked, and done or dropped items not yet flushed
+  archive/items-YYYY-MM.yaml    flushed items, one file per month of ts_done
 ```
 
 Root resolution: `--root <path>`, else `git rev-parse --show-toplevel`, else walk up from cwd to a folder holding `_architecture/` or `_jookoi-architecture/`. `--private` picks the private layer.
 
 ## Schema
 
-```json
-{
-  "next_id": 19,
-  "last_flush": "2026-09-19T08:00:00Z",
-  "items": {
-    "t017": {
-      "content": ["Rewrite flush so it stops wiping the file", "", "- live items no longer move"],
-      "status": "now",
-      "priority": 2000,
-      "ts_created": "2026-09-12T09:04:11Z",
-      "ts_started": "2026-09-14T13:22:00Z",
-      "ts_done": null,
-      "ts_touched": "2026-09-19T17:41:58Z"
-    }
-  }
-}
+```yaml
+repo: stack
+last_flush: 2026-09-19T08:00:00Z
+items:
+  k4f9:
+    title: Rewrite flush so it stops wiping the file
+    status: now            # now | parked | done | dropped
+    priority: 2000
+    body: |
+      Free-form markdown. Quotes, "double" and 'single', need no escaping.
+
+      - live items no longer move
+    ts_created: 2026-09-12T09:04:11Z
+    ts_started: 2026-09-14T13:22:00Z
+    ts_done: null
+    ts_touched: 2026-09-19T17:41:58Z
 ```
 
-- `content` is markdown as an array of lines. Line 0 is the title shown by `list`, the rest is the body shown by `show`.
+- `repo` is the ID prefix for cross-repo references and exports (`stack:k4f9`). It is written once when the file is created, defaulting to the repo root's folder name lowercased, and never derived again.
+- `title` is one line, shown by `list`. `body` is markdown, shown by `show`. A title-only item has an empty `body`.
 - `status` is `now`, `parked`, `done` or `dropped`. `parked` covers both never-scoped and gone-dormant items; `ts_started` tells them apart. `dropped` is a decision not to do it.
 - `priority` is a sparse number, lower sorts first. New items append at `max + 1000`. A placement between two items averages their values. Nothing renumbers, and an item keeps its value across status changes. Ordering is approximate by design.
-- Timestamps (`ts_*`, `last_flush`) are full ISO 8601 UTC (`2026-09-19T17:41:58Z`), not bare dates — same-day writes need ordering. Every write sets `ts_touched`. Items migrated from the old files have `null` for the timestamps that were never recorded.
-- `next_id` only grows. IDs (`t017`) are never reused, including after a flush, because plan files cite them by name. Input accepts `t17`, `17` or `t017`.
+- Timestamps (`ts_*`, `last_flush`) are full ISO 8601 UTC (`2026-09-19T17:41:58Z`), not bare dates, since same-day writes need ordering. Every write sets `ts_touched`.
+- IDs are short random base36 strings, no counter, checked for collisions against the active file and every archive file. An ID starts with a letter and contains a digit, so YAML never reads it as a number, boolean or null. IDs are never reused, since plan files cite them. Older `t001`-style IDs stay valid. Input accepts the bare ID, `repo:id`, and the legacy `t17` and `t017` forms. A prefix that does not match `repo:` is refused with the repo it belongs to.
 
 ## Commands
 
@@ -51,29 +51,44 @@ Reads:
 | `list --status=parked` | Items of one status in priority order |
 | `list --status=done --since=<date>` | Done items in a window (flush classification) |
 | `list --stale=<days>` | `now` items untouched for N days |
-| `find "<text>"` | Matches across every status, the JSON archive and the older markdown archive. Run before `add` |
-| `show <id>` | Full content and timestamps of one item |
+| `list --archived [--last N]` | Flushed items, newest first, default 10. Bounded on purpose |
+| `find "<text>"` | Matches across every status, the YAML archives and the older markdown archive. Run before `add` |
+| `show <id>` | Full item and timestamps. Resolves archived IDs too |
 | `count` | Counts per status, archived total, last flush date |
-| `render [--status=S]` | The store as markdown, for a human |
+| `render [--status=S]` | The store as markdown, IDs carry the repo prefix |
 
-`list` prints one line per item, ID inline, no priority integer and no body:
+`list` prints one line per item, ID then title, no priority integer and no body:
 
 ```
-- [ ] `t018` Walk-up root resolution for non-git folders
-- [x] `t015` Global AGENTS.md gained a Naming section
+- [ ] k4f9 Walk-up root resolution for non-git folders
+- [x] t015 Global AGENTS.md gained a Naming section
 ```
+
+Every message that names an item prints `id title`. When you refer to an item in a reply, do the same: the user cannot act on a bare ID.
 
 Writes, each a single call with no prior read:
 
 | Command | Effect |
 |---|---|
-| `add "<markdown>" [--status=now\|parked] [placement]` | New item, prints its ID. Default `now`, appended last |
+| `add --title "<t>"` | Title-only item. Default status `now`, appended last, prints `id title` |
+| `add -` / `add --file F` | Payload from stdin or a file |
 | `done <id>` / `park <id>` / `start <id>` / `drop <id>` | Status change. `done` sets `ts_done`, `start` sets `ts_started` if unset |
-| `edit <id> "<markdown>"` | Replaces content |
+| `edit <id> --title "<t>"` / `edit <id> -` / `edit <id> --file F` | Replaces the payload keys given (`title`, `body`) |
 | `move <id> <placement>` | Reprioritise |
-| `flush [--before=<date>]` | Moves `done` and `dropped` items to `archive/items-YYYY-MM.json`. Touches nothing else |
+| `flush [--before=<date>]` | Moves `done` and `dropped` items to `archive/items-YYYY-MM.yaml` by month of `ts_done`. Touches nothing else. Refuses on an ID collision |
+
+The payload is YAML (JSON is valid YAML) with keys `title`, `body`, `status`, and optionally placement keys. Use `--file` under PowerShell, where heredocs differ:
+
+```yaml
+title: Rewrite flush so it stops wiping the file
+status: parked
+body: |
+  Free-form markdown, copied in as written.
+```
 
 Placement is `--after=<id>`, `--before=<id>`, `--first` or `--last` (default). Name a neighbour already seen in `list`; the script computes the number. `--priority=<n>` exists for scripting only.
+
+Archived items are read-only: `show` and `find` resolve them, every write command refuses them.
 
 ## Errors
 
@@ -81,4 +96,4 @@ An unknown ID exits non-zero naming the ID, never a silent no-op. A malformed st
 
 ## Flush
 
-`flush` is non-destructive: it only moves finished items, so nothing live is at risk and there is no move-to-backlog step. Because `list` excludes old `done` items, a large `done` pile costs nothing, and flushing is tidying done on judgement, not urgency. Suggest it at a natural boundary (a chunk of work finished, or `now` ran dry) and follow `flush-prompt.md`, so the classification step runs the same way each time.
+`flush` is non-destructive: it only moves finished items, so nothing live is at risk and there is no move-to-backlog step. Unflushed items load into every session's context. Flushed items are lookup-only: `find`, `show <id>` and `list --archived --last N`. Flush at a stable point after which older items are unlikely to matter next session, and follow `flush-prompt.md`, so the classification step runs the same way each time.
