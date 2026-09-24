@@ -2,7 +2,7 @@
 name: jookoi-plan-review
 description: Review an LLM-written feature implementation plan before coding. Verifies it against the codebase and reports blockers, gaps, and risks.
 metadata:
-  last_updated: 2026-09-24
+  last_updated: "2026-09-24T00:00:00Z"
   author: Joosep Kõivistik
   repository: https://github.com/equilerex/jookoi-ai-market
   version: "1.0"

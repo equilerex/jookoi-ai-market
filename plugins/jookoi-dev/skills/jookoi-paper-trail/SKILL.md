@@ -1,10 +1,10 @@
 ---
 name: jookoi-paper-trail
-description: Manage repo context and working memory. CONTEXT.md, TODO.md, ARCHITECTURE.md, plans, decisions, archive. Write things down before they're lost.
+description: Repo working memory kept current for the whole session, not set up once. Work items in items.yaml via a script, CONTEXT.md, ARCHITECTURE.md, plans, decision history. Use when a repo has _architecture/ or items.yaml, when the user asks to document or track work, or when a decision, config change or incident happens.
 metadata:
   author: Joosep Kõivistik
   repository: https://github.com/equilerex/jookoi-ai-market
-  last_updated: 2026-09-24
+  last_updated: "2026-09-24T00:00:00Z"
 ---
 
 # jookoi-paper-trail
@@ -13,16 +13,53 @@ Every repo keeps its own written memory: `CONTEXT.md` beside the code it describ
 
 Two things move information through this system: a **script** that owns every mechanical decision, and **you**, who own what happened and where it belongs. Items are written only through the script, by ID, with no prior read: never open or hand-edit `items.yaml`.
 
-**Never show a bare ID to the user.** Every mention of an item, in a reply, a plan or a doc, is `id title`, for example "k4f9 Migrate the store to YAML". The user cannot act on "start k4f9" without cross-referencing. Script output already follows this.
+**Never show a bare ID to the user.** Every mention of an item, in a reply, a plan, a doc or another item's body, is `id title`, for example "k4f9 Migrate the store to YAML". The user cannot act on "start k4f9" without cross-referencing. Script output already follows this.
 
-## When this runs
+## Session contract
 
-- **After a change that makes an existing context file wrong.** Immediately, before continuing the original task — a doc that is confidently wrong costs more than one that is absent.
-  - **First real work in a folder with no context file.** Create one. Never bulk-generate across a tree: a context file earns its place the first time real work happens there, and mass-produced ones are wrong on arrival.
-  - **Session start**: run `list` (bounded: `now` items plus the 3 latest done). `list --status=parked` when the `now` list is thin and you want something to pull in with `start`.
-  - **As things happen**: `add`, `done`, `edit`, `park`, `drop` by ID. `find "<text>"` before `add` to avoid duplicates. Untouched across sessions is the steady state.
-  - **When a chunk of work finishes, or `now` runs dry**: suggest a flush, following `references/flush-prompt.md`. Judgement only, never a cadence or a hook. Flush only moves `done` and `dropped` items to the archive, so nothing live is at risk and deferring it costs nothing.
-  - **A plan's build finishes.** Move `plans/YYYY-MM-DD-topic.md` to `plans/implemented/YYYY-MM-DD-topic.md`, unchanged, once its `Status:` line says done. Keeps `plans/` root to what's still open, so a cold session isn't tempted to read finished plans it doesn't need. Details: `references/file-formats.md`.
+Once this skill is loaded, it stays in force until the session ends, including after compaction. Setting up the files is not the job. The job is recording things in the same turn they happen, because a note written at the end of the session is written from memory of a chat that has already lost detail.
+
+- **First use in a session, and whenever you set up or adopt a repo:** run `list`, then `sweep`. If `sweep` reports missing hooks or a harness without them, follow `references/hooks.md` § Check and wire. Until hooks run, you are the gate: `sweep` before ending any turn that changed files.
+- **After every write through this skill,** end your reply with one line: `paper-trail: <what was recorded>`. That leaves a trail in the transcript that survives compaction and shows the user what landed.
+- **If you write a compaction summary,** keep a line saying jookoi-paper-trail is active in this repo and must be reloaded before the next write.
+
+## When to write
+
+Write in the same turn as the trigger, not at the end.
+
+| Trigger | Destination | How |
+|---|---|---|
+| The user agrees to a call in chat (a tool, a provider, an approach, a rejection) | inside a planning session: that plan. Otherwise: `plans/decision-history/` | edit the plan's section, or `new-decision` |
+| Deployment, configuration, credentials handling or an external service changes | `ARCHITECTURE.md` or the folder's `CONTEXT.md` | section-surgical edit |
+| An incident: a leak, data loss, a broken deploy | an item with the remediation steps, plus a decision if a rule came out of it | `add --file`, `new-decision` |
+| A task starts, finishes, is parked or abandoned | the store | `start`, `done`, `park`, `drop` |
+| New work is identified | the store | `find` first, then `add --file` with a body |
+| A change makes a doc's statement false (an interface, a path, a constraint) | that doc | fix it before continuing the original task |
+| First real work in a folder with no context file | new `CONTEXT.md` there | from `assets/templates/CONTEXT.md`. Never bulk-generate across a tree |
+| A chunk of work finishes, or `now` runs dry | suggest a flush | `references/flush-prompt.md`. Judgement only |
+| A plan's `Status:` says done | `plans/implemented/`, unchanged | move the file (`references/file-formats.md`) |
+| End of a turn that changed files | check nothing slipped | `sweep`, then record, or `sweep --ack` if nothing is worth recording |
+
+Session start: `list` shows `now` items plus the 3 latest done. `list --status=parked` when `now` is thin. Untouched across sessions is the steady state.
+
+## Items carry a body
+
+An item is a scratchpad for the next session, not a to-do line. Anything that isn't obvious from its title gets a body: why it exists, what state it's in, the next concrete step, and pointers to files, plans or decisions. Title-only is for items whose title says everything. `add` and `edit` print a note when the body is empty.
+
+```yaml
+# add --file item.yaml
+title: Rotate the leaked triage token
+status: now
+body: |
+  Leaked in commit history on 24-09-2026 (decision 002). Redaction in `triage.js` stops
+  new leaks but cannot un-leak this one: rotation is the real fix.
+
+  Next: revoke in GitHub settings, create a fine-grained token (issues:write only),
+  update the `TRIAGE_TOKEN` secret, re-run the triage workflow.
+  Blocked on: ko2q Push the redacted history.
+```
+
+`--file` works in every shell. `add -` reads the same YAML from stdin.
 
 ## Routing
 
@@ -47,9 +84,9 @@ Both layers can sit side by side in one folder — `CONTEXT.md` next to `_jookoi
 The test is audience, not secrecy. **Shared** (no prefix, committed) is what stays true for whoever works in this repo next, including when that isn't the user: how the code is built, why it's shaped this way, what breaks. **Private** (`_jookoi-` prefix, gitignored, mirrored to the personal vault) is what's true for this user or this machine rather than for this repo: local paths and environment, judgements about people, vendors or clients, opinions not ready to ship, cross-repo threads a contributor here has no stake in, and anything about the work rather than the code.
 
 - **Split a note that straddles.** The technical half is shared and useful to everyone; the personal half is private. Writing the whole thing private hides the useful half from the repo — the more common failure than over-sharing.
-  - **Shared files never link to private ones.** The link dangles for everyone but this user, and its filename leaks what was meant to stay unseen. Private → shared is fine.
-  - **Repo you can't commit to → everything private.** No shared layer to write to, so `--private` is the whole answer there.
-  - **Both present, conflicting? Private wins on read** (`references/operations.md`) — so a private note that contradicts a shared one silently overrides it. Correct the shared file instead of shadowing it, unless the contradiction is genuinely personal.
+- **Shared files never link to private ones.** The link dangles for everyone but this user, and its filename leaks what was meant to stay unseen. Private → shared is fine.
+- **Repo you can't commit to → everything private.** No shared layer to write to, so `--private` is the whole answer there.
+- **Both present, conflicting? Private wins on read** (`references/operations.md`) — so a private note that contradicts a shared one silently overrides it. Correct the shared file instead of shadowing it, unless the contradiction is genuinely personal.
 
 ## The script
 
@@ -68,6 +105,8 @@ edit <id> --title "<t>" | - | --file F   move <id> <placement>
 flush [--before=DATE]              done+dropped -> archive/items-YYYY-MM.yaml
 render                             store as markdown, for a human
 stale [days]  check                stale items and context files; validate
+sweep [--ack]                      uncommitted work vs store and context files
+hooks [--print [--harness=H]]      which hooks are wired; --print: fragment to merge
 new-decision "<title>"  new-plan "<topic>"
 ```
 
@@ -80,12 +119,12 @@ No Node available? `references/pipeline.md` has the manual fallback.
 ## Hard rules
 
 - **Never regenerate a prose file to change one section.** Target the heading, rewrite to the next one, leave every other byte alone.
-  - **Never write a secret.** API key, token, credential, connection string — flag it, don't record it.
-  - **Never leave a placeholder.** `TBD` / `TODO` / `[...]` — fill it or drop the section.
-  - **Never restate what the code shows**, document parameters, log a changelog, or explain framework behaviour. If removing a line wouldn't slow a newcomer down, cut it.
-  - **Never duplicate across levels.** Keep content at the more specific level; delete the copy.
-  - **Never carry a wiped name forward.** Once something is removed or rejected, live docs stop naming it — `plans/decision-history/` holds the name and the reasoning. Full rule: `references/file-formats.md`.
-  - **A folder's `CONTEXT.md` dies with the folder** — but check inbound references and promote anything durable first (`references/operations.md`).
+- **Never write a secret.** API key, token, credential, connection string: flag it, don't record it. This covers item bodies and command output too. Don't print any part of a secret, not even a prefix.
+- **Never leave a placeholder.** `TBD` / `TODO` / `[...]` — fill it or drop the section.
+- **Never restate what the code shows**, document parameters, log a changelog, or explain framework behaviour. If removing a line wouldn't slow a newcomer down, cut it.
+- **Never duplicate across levels.** Keep content at the more specific level; delete the copy.
+- **Never carry a wiped name forward.** Once something is removed or rejected, live docs stop naming it — `plans/decision-history/` holds the name and the reasoning. Full rule: `references/file-formats.md`.
+- **A folder's `CONTEXT.md` dies with the folder** — but check inbound references and promote anything durable first (`references/operations.md`).
 
 ## Bundled assets
 
@@ -97,7 +136,7 @@ No Node available? `references/pipeline.md` has the manual fallback.
 | Flushing | `references/flush-prompt.md` |
 | Recovering a dead session, handling compaction | `references/pipeline.md` |
 | Finding, removing, staleness, section-surgical edits | `references/operations.md` |
-| Wiring the session-end gate on any harness | `references/hooks.md` |
+| `sweep` or `hooks` says hooks are missing, or wiring them on any harness | `references/hooks.md` |
 | A browsable page over the store, one or many repos | `references/viewer.md` |
 | Creating a file that doesn't exist yet | `assets/templates/<type>.md` |
 | Any mechanical operation | `scripts/jookoi-paper-trail.js` |

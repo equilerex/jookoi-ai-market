@@ -2,7 +2,7 @@
 name: jookoi-md-design
 description: Design guidelines for good-looking, easy to read and scan, ADHD-friendly markdown (.md) files.
 metadata:
-  last_updated: 2026-09-23
+  last_updated: "2026-09-23T00:00:00Z"
   author: Joosep Kõivistik
   repository: https://github.com/equilerex/jookoi-ai-market
 ---

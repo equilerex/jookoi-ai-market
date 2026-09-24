@@ -2,7 +2,7 @@
 name: jookoi-write-like-a-person
 description: Human tone for replies and people-facing text. Direct, honest, no padding. For emails, messages, explanations.
 metadata:
-  last_updated: 2026-09-23
+  last_updated: "2026-09-23T00:00:00Z"
   author: Joosep Kõivistik
   repository: https://github.com/equilerex/jookoi-ai-market
 ---

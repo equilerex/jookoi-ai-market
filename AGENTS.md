@@ -40,7 +40,7 @@ Never add custom top-level keys outside this list.
 Credit, repository links, version, and timestamps belong inside the `metadata:` dictionary:
 ```yaml
 metadata:
-  last_updated: 2026-09-23
+  last_updated: "2026-09-23T12:00:00Z"
   author: Joosep Kõivistik
   repository: https://github.com/equilerex/jookoi-ai-market
 ```

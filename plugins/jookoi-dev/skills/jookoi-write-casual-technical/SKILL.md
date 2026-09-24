@@ -2,7 +2,7 @@
 name: jookoi-write-casual-technical
 description: Anti-AI-slop writing style for docs, README, SKILL.md, plans, architecture. Direct, concise, no fluff or padding.
 metadata:
-  last_updated: 2026-09-23
+  last_updated: "2026-09-23T00:00:00Z"
   author: Joosep Kõivistik
   repository: https://github.com/equilerex/jookoi-ai-market
 ---

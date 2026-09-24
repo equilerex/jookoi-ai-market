@@ -190,12 +190,12 @@ function applyMetadataPatch(skillMdPath, currentFields, repoConfig) {
   const content = fs.readFileSync(skillMdPath, 'utf8')
   if (!content.startsWith('---')) return
 
-  const today = new Date().toISOString().slice(0, 10)
+  const today = new Date().toISOString().slice(0, 19) + "Z"
 
   if (content.includes('metadata:')) {
     const meta = currentFields.metadata || {}
     if (!meta.last_updated && !meta.updated && !meta.date) {
-      const updated = content.replace(/(metadata:\r?\n)/, `$1  last_updated: ${today}\n`)
+      const updated = content.replace(/(metadata:\r?\n)/, `$1  last_updated: "${today}"\n`)
       fs.writeFileSync(skillMdPath, updated, 'utf8')
       console.log(`Added last_updated timestamp in ${path.relative(rootDir, skillMdPath)}`)
     }
@@ -206,7 +206,7 @@ function applyMetadataPatch(skillMdPath, currentFields, repoConfig) {
     'metadata:',
     `  author: ${repoConfig.author}`,
     `  repository: ${repoConfig.repository}`,
-    `  last_updated: ${today}`
+    `  last_updated: "${today}"`
   ].join('\n')
 
   // Insert before the closing --- of frontmatter

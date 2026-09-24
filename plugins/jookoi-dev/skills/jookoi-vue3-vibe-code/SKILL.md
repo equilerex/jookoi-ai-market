@@ -2,7 +2,7 @@
 name: jookoi-vue3-vibe-code
 description: Prototype Vue 3 apps. CDN/local load, no build, plain HTML/CSS. MVPs, dashboards, tools. Vue Router, Options API, vanilla JavaScript.
 metadata:
-  last_updated: 2026-09-23
+  last_updated: "2026-09-23T00:00:00Z"
   author: Joosep Kõivistik
   repository: https://github.com/equilerex/jookoi-ai-market
 ---

@@ -31,7 +31,7 @@ items:
 ```
 
 - `repo` is the ID prefix for cross-repo references and exports (`stack:k4f9`). It is written once when the file is created, defaulting to the repo root's folder name lowercased, and never derived again.
-- `title` is one line, shown by `list`. `body` is markdown, shown by `show`. A title-only item has an empty `body`.
+- `title` is one line, shown by `list`. `body` is markdown, shown by `show`: why the item exists, its state, the next step, pointers. Leave it empty only when the title says everything. `list` marks `now` and `parked` items that have none, and `add`/`edit` print a note.
 - `status` is `now`, `parked`, `done` or `dropped`. `parked` covers both never-scoped and gone-dormant items; `ts_started` tells them apart. `dropped` is a decision not to do it.
 - `priority` is a sparse number, lower sorts first. New items append at `max + 1000`. A placement between two items averages their values. Nothing renumbers, and an item keeps its value across status changes. Ordering is approximate by design.
 - Timestamps (`ts_*`, `last_flush`) are full ISO 8601 UTC (`2026-09-19T17:41:58Z`), not bare dates, since same-day writes need ordering. Every write sets `ts_touched`.
@@ -57,12 +57,23 @@ Reads:
 | `count` | Counts per status, archived total, last flush date |
 | `render [--status=S]` | The store as markdown, IDs carry the repo prefix |
 
-`list` prints one line per item, ID then title, no priority integer and no body:
+`list` prints one line per item, ID then title, no priority integer and no body. A `now` or `parked` item with an empty body is marked:
 
 ```
 - [ ] k4f9 Walk-up root resolution for non-git folders
+- [ ] p2q7 Check the phone shortcut  (no body)
 - [x] t015 Global AGENTS.md gained a Naming section
 ```
+
+Session checks, read-only apart from `--ack`:
+
+| Command | Returns |
+|---|---|
+| `sweep` | Uncommitted files newer than the last store write, `CONTEXT.md` files older than changes under them, changed folders with no context file, items with no body, missing hooks for this harness, or a note that the harness has none |
+| `sweep --ack` | Records "nothing to record for the changes so far", which quiets the gate until files change again |
+| `sweep --gate` | Used by `doc-gate.sh`: prints only when the gate should block |
+| `hooks` | Per harness, whether the gate, rehydrate and preserve hooks are wired, and where |
+| `hooks --print [--harness=H]` | The hooks fragment for this harness (or `H`: `claude`, `gemini`, `copilot`) with this install's paths, and the file it merges into |
 
 Every message that names an item prints `id title`. When you refer to an item in a reply, do the same: the user cannot act on a bare ID.
 

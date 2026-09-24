@@ -2,7 +2,7 @@
 
 How to bring a repo on the old layout over to the current one. Agent-driven with user approval. There is no `migrate` command: few repos run the old system and each holds little history, so judgement per item beats a script.
 
-Order: decisions, then `TODO.md`/`BACKLOG.md`, then `items.json`, then stale context files. Present what you found and what you propose before changing anything. Never run `git commit`, `git push`, `git add` or `git mv`.
+Order: decisions, then `TODO.md`/`BACKLOG.md`, then `items.json`, then stale context files, then hooks: run `hooks`, and if this harness's gate or rehydrate is missing, offer the merge in `references/hooks.md`. On a harness without hooks, propose the `AGENTS.md` line from `references/hooks.md` instead. A repo adopted with neither gets no session-start list and no end-of-turn check. Present what you found and what you propose before changing anything. Never run `git commit`, `git push`, `git add` or `git mv`.
 
 Treat the shared layer (`_architecture/`) and the private layer (`_jookoi-architecture/`) separately. Private content is promoted only into private docs.
 

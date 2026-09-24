@@ -1,24 +1,23 @@
 {
-  "//": "Merge into .claude/settings.json (or ~/.claude/settings.json). Do not replace the file.",
+  "//": "Merge into ~/.claude/settings.json (every repo; the hooks stay silent in repos without items.yaml) or a repo's .claude/settings.json. Do not replace the file. No SubagentStop: subagents do not own the working set.",
   "hooks": {
     "Stop": [
       {
         "hooks": [
-          { "type": "command", "command": "sh .agents/skills/jookoi-paper-trail/hooks/doc-gate.sh" }
-        ]
-      }
-    ],
-    "SubagentStop": [
-      {
-        "hooks": [
-          { "type": "command", "command": "sh .agents/skills/jookoi-paper-trail/hooks/doc-gate.sh" }
+          {
+            "type": "command",
+            "command": "sh \"$HOME/.agents/skills/jookoi-paper-trail/hooks/doc-gate.sh\""
+          }
         ]
       }
     ],
     "PreCompact": [
       {
         "hooks": [
-          { "type": "command", "command": "sh .agents/skills/jookoi-paper-trail/hooks/preserve.sh" }
+          {
+            "type": "command",
+            "command": "sh \"$HOME/.agents/skills/jookoi-paper-trail/hooks/preserve.sh\""
+          }
         ]
       }
     ],
@@ -26,7 +25,10 @@
       {
         "matcher": "compact|startup|resume",
         "hooks": [
-          { "type": "command", "command": "sh .agents/skills/jookoi-paper-trail/hooks/rehydrate.sh" }
+          {
+            "type": "command",
+            "command": "sh \"$HOME/.agents/skills/jookoi-paper-trail/hooks/rehydrate.sh\""
+          }
         ]
       }
     ]

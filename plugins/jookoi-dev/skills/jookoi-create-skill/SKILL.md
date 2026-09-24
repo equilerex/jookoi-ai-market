@@ -3,15 +3,13 @@ name: jookoi-create-skill
 description: Create or adapt llm skills Portable, reusable, host-agnostic workflows for creating SKILL.md
 license: Apache-2.0
 metadata:
-  last_updated: 2026-09-23
-  author: Joosep Kõivistik
+  last_updated: "2026-09-23T00:00:00Z"
+  author: Joosep Kõivistik Modified 2026-09-19 from the Apache-licensed skill-creator: retained its draft, test, review, and iteration workflow; replaced host-bound instructions with portable ones.
   repository: https://github.com/equilerex/jookoi-ai-market
 ---
 
 # Personal skill creator
-
-<!-- Modified 2026-09-19 from the Apache-licensed skill-creator: retained its draft, test, review, and iteration workflow; replaced host-bound instructions with portable ones. -->
-
+ 
 Build a skill for a demonstrated need. Start from the user's actual workflow and keep the result small enough that another agent will read it and act correctly. A `SKILL.md` is the portable core. Other files are optional support.
 
 ## Personal defaults

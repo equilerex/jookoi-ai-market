@@ -17,6 +17,8 @@
 //   jookoi-paper-trail flush [--before=DATE]                done+dropped -> archive/items-YYYY-MM.yaml
 //   jookoi-paper-trail stale [DAYS]                         stale now items, plus CONTEXT.md files behind their folder
 //   jookoi-paper-trail check                                validate the store and managed files
+//   jookoi-paper-trail sweep [--gate] [--ack]               uncommitted work vs the store and context files
+//   jookoi-paper-trail hooks [--print [--harness=H]]        which hooks are wired; --print: fragment for this install
 //   jookoi-paper-trail new-decision "<title>"               next NNN in plans/decision-history/, listed in index.md
 //   jookoi-paper-trail new-plan "<topic>"                   dated plan file from template
 //
@@ -26,6 +28,7 @@
 // belongs) stays with the model.
 
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const crypto = require("crypto");
 const { execSync } = require("child_process");
@@ -309,7 +312,7 @@ function cmdList(ctx, _args, opts) {
     picked = now.concat(done);
   }
   if (!picked.length) return ctx.report("(none)");
-  picked.forEach(([id, it]) => ctx.report(line(id, it)));
+  picked.forEach(([id, it]) => ctx.report(line(id, it) + (!it.body && (it.status === "now" || it.status === "parked") ? "  (no body)" : "")));
 }
 
 function daysBetween(from, to) {
@@ -398,6 +401,20 @@ function cmdAdd(ctx, args, opts) {
   };
   saveStore(ctx, loaded);
   ctx.report(`${label(id, store.items[id])} added (${status})`);
+  bodyNotes(ctx, store, id, store.items[id]);
+}
+
+// Nudges, not refusals: an item is a scratchpad, and a title alone rarely carries
+// enough for a cold session to act on it.
+function bodyNotes(ctx, store, id, item) {
+  if (!item.body) {
+    ctx.report(`note: ${id} has no body. Keep it title-only only if the title says everything. Otherwise: edit ${id} --file F with context, current state, next step, and pointers to files, plans or decisions.`);
+    return;
+  }
+  const bare = Object.entries(store.items)
+    .filter(([oid, o]) => oid !== id && new RegExp(`\\b${oid}\\b`).test(item.body) && !item.body.includes(`${oid} ${o.title}`))
+    .map(([oid, o]) => label(oid, o));
+  if (bare.length) ctx.report(`note: the body names items by bare id. Write them as id plus title: ${bare.join("; ")}`);
 }
 
 function cmdTransition(target) {
@@ -425,6 +442,7 @@ function cmdEdit(ctx, [id, ...rest], opts) {
   item.ts_touched = nowISO();
   saveStore(ctx, loaded);
   ctx.report(`${label(realId, item)} edited`);
+  bodyNotes(ctx, loaded.store, realId, item);
 }
 
 function cmdMove(ctx, [id], opts) {
@@ -510,6 +528,180 @@ function cmdStale(ctx, [days]) {
   ctx.report(contexts.length ? (flagged ? `context files: ${flagged} of ${checked} flagged` : `context files: ${checked} checked, none stale`) : "context files: none found");
 }
 
+// ------------------------------------------------------------ hooks and sweep
+
+// Where each harness keeps hook registrations, and the three hook scripts to look for.
+function hookFiles(root) {
+  const home = os.homedir();
+  return {
+    "Claude Code": [
+      path.join(home, ".claude", "settings.json"), path.join(home, ".claude", "settings.local.json"),
+      path.join(root, ".claude", "settings.json"), path.join(root, ".claude", "settings.local.json"),
+    ],
+    "Gemini CLI": [
+      path.join(home, ".gemini", "settings.json"), path.join(home, ".gemini", "hooks", "hooks.json"),
+      path.join(root, ".gemini", "settings.json"), path.join(root, ".gemini", "hooks", "hooks.json"),
+    ],
+    "Copilot CLI": [path.join(root, "hooks.json"), path.join(root, ".github", "hooks", "hooks.json")],
+  };
+}
+
+const HOOK_SCRIPTS = { gate: "doc-gate.sh", rehydrate: "rehydrate.sh", preserve: "preserve.sh" };
+
+// Harnesses with hook support, the fragment for each, and where it merges.
+const HARNESSES = {
+  claude: { name: "Claude Code", config: "claude-code.json", target: "~/.claude/settings.json" },
+  gemini: { name: "Gemini CLI", config: "gemini.json", target: ".gemini/hooks/hooks.json (Gemini CLI v0.26.0+)" },
+  copilot: { name: "Copilot CLI", config: "copilot.json", target: "the repo's hooks.json" },
+};
+
+// Only harnesses that mark their shells are detected. Anything else is null: no
+// hooks are assumed, and the model is the gate. JOOKOI_HARNESS overrides.
+function detectHarness() {
+  const forced = process.env.JOOKOI_HARNESS;
+  if (forced) return HARNESSES[forced] ? forced : null;
+  if (process.env.CLAUDECODE) return "claude";
+  if (process.env.GEMINI_CLI) return "gemini";
+  return null;
+}
+
+const NO_HOOKS = "No hook-capable harness detected (hooks exist for Claude Code, Gemini CLI and Copilot CLI; JOOKOI_HARNESS=claude|gemini|copilot overrides detection). Nothing checks this session for you: run `list` at session start and `sweep` before ending any turn that changed files.";
+
+function hooksStatus(root) {
+  return Object.entries(hookFiles(root)).map(([harness, files]) => {
+    const found = {};
+    files.filter((f) => fs.existsSync(f)).forEach((f) => {
+      const text = fs.readFileSync(f, "utf8");
+      Object.entries(HOOK_SCRIPTS).forEach(([job, script]) => { if (text.includes(script)) found[job] = f; });
+    });
+    return { harness, found };
+  });
+}
+
+// The hook commands for wherever this copy of the skill is installed (~/.agents,
+// a plugin cache, a repo), with forward slashes so sh on Windows accepts them.
+function hookCommand(script) {
+  const dir = path.resolve(__dirname, "..", "hooks").replace(/\\/g, "/");
+  const home = os.homedir().replace(/\\/g, "/");
+  const shown = dir.toLowerCase().startsWith(home.toLowerCase() + "/") ? "$HOME" + dir.slice(home.length) : dir;
+  return `sh "${shown}/${script}"`;
+}
+
+function missingHooksMessage(key) {
+  const h = HARNESSES[key];
+  return `${h.name} hooks are missing: nothing lists the working set at session start or checks at the end of a turn. Tell the user once, and offer to merge the output of \`hooks --print\` (paths already point at this install) into ${h.target}, adding to existing entries, with their approval. Until then, run \`sweep\` before ending any turn that changed files. Details: references/hooks.md.`;
+}
+
+function cmdHooks(ctx, _args, opts) {
+  const home = os.homedir();
+  const current = detectHarness();
+  if (opts.print) {
+    const key = opts.harness || current;
+    if (!key || !HARNESSES[key]) refuse("hooks --print", `needs --harness=${Object.keys(HARNESSES).join("|")} (no hook-capable harness detected)`);
+    const frag = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "hooks", "config", HARNESSES[key].config), "utf8"));
+    Object.keys(frag).filter((k) => k.startsWith("//")).forEach((k) => delete frag[k]);
+    Object.values(frag.hooks).forEach((arr) => arr.forEach((m) => m.hooks.forEach((h) => { h.command = hookCommand(h.command.match(/([a-z-]+\.sh)/)[1]); })));
+    ctx.report(`// ${HARNESSES[key].name}: merge into ${HARNESSES[key].target}`);
+    return ctx.report(JSON.stringify(frag, null, 2));
+  }
+  const status = hooksStatus(ctx.root);
+  status.forEach(({ harness, found }) => {
+    const jobs = Object.keys(HOOK_SCRIPTS).map((j) => `${j} ${found[j] ? `yes (${found[j].replace(home, "~")})` : "no"}`);
+    const mark = current && HARNESSES[current].name === harness ? "  <- this session" : "";
+    ctx.report(`${harness}: ${jobs.join(", ")}${mark}`);
+  });
+  if (!current) return ctx.report(NO_HOOKS);
+  const found = status.find((h) => h.harness === HARNESSES[current].name).found;
+  if (!found.gate || !found.rehydrate) ctx.report(missingHooksMessage(current));
+}
+
+function mtime(file) {
+  try { return fs.statSync(file).mtimeMs; } catch { return 0; }
+}
+
+function ackFile(root) {
+  const key = process.platform === "win32" ? path.resolve(root).toLowerCase() : path.resolve(root);
+  return path.join(os.homedir(), ".jookoi-paper-trail", "ack", crypto.createHash("sha1").update(key).digest("hex").slice(0, 16));
+}
+
+// Docs and the store itself are the record, not the work being recorded.
+const RECORD_RE = /^(_architecture|_jookoi-architecture)\/|(^|\/)(_jookoi-)?CONTEXT\.md$|(^|\/)(AGENTS|CLAUDE)\.md$/;
+
+function hhmm(ms) {
+  if (!ms) return "never";
+  const d = new Date(ms);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+// Compares uncommitted work against the working set and the context files. Mechanical
+// only: it says what might be unrecorded; deciding what to write is the model's job.
+function cmdSweep(ctx, _args, opts) {
+  const ack = ackFile(ctx.root);
+  if (opts.ack) {
+    if (!ctx.dryRun) { fs.mkdirSync(path.dirname(ack), { recursive: true }); fs.writeFileSync(ack, new Date().toISOString() + "\n"); }
+    return ctx.report("acknowledged: nothing to record for the changes so far. The gate stays quiet until files change again.");
+  }
+
+  let porcelain;
+  try {
+    porcelain = execSync("git status --porcelain -z --untracked-files=all", { cwd: ctx.root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+  } catch { if (!opts.gate) ctx.report("sweep: skipped (not a git repository)"); return; }
+  const changed = porcelain.split("\0").filter(Boolean)
+    .map((e) => e.slice(3).replace(/\\/g, "/"))
+    .filter((p) => !RECORD_RE.test(p) && fs.existsSync(path.join(ctx.root, p)) && fs.statSync(path.join(ctx.root, p)).isFile());
+  const newest = Math.max(0, ...changed.map((p) => mtime(path.join(ctx.root, p))));
+  const storeWrite = Math.max(mtime(path.join(ctx.root, "_architecture", "items.yaml")), mtime(path.join(ctx.root, "_jookoi-architecture", "items.yaml")));
+  const recorded = Math.max(storeWrite, mtime(ack));
+
+  if (opts.gate) {
+    const quietMs = Number(process.env.JOOKOI_GATE_QUIET_MIN || 10) * 60000;
+    if (!changed.length || newest <= recorded || Date.now() - recorded < quietMs) return;
+  }
+
+  const findings = [];
+  const unrecorded = changed.filter((p) => mtime(path.join(ctx.root, p)) > recorded);
+  if (unrecorded.length) findings.push(`${unrecorded.length} changed file${unrecorded.length === 1 ? "" : "s"} newer than the last working-set write (${hhmm(storeWrite)}): ${unrecorded.slice(0, 8).join(", ")}${unrecorded.length > 8 ? ", ..." : ""}`);
+
+  const stale = new Map();
+  const bare = new Set();
+  changed.forEach((p) => {
+    const t = mtime(path.join(ctx.root, p));
+    let dir = path.posix.dirname(p);
+    for (;;) {
+      const hit = ["CONTEXT.md", "_jookoi-CONTEXT.md"].map((n) => (dir === "." ? n : `${dir}/${n}`)).find((c) => fs.existsSync(path.join(ctx.root, c)));
+      // Templates carry placeholder content and are never "stale".
+      if (hit && !/(^|\/)assets\/templates\//.test(hit)) { if (mtime(path.join(ctx.root, hit)) < t) stale.set(hit, (stale.get(hit) || 0) + 1); return; }
+      if (hit) return;
+      if (dir === ".") { const top = path.posix.dirname(p); if (top !== "." && t > recorded) bare.add(top.split("/").slice(0, 2).join("/")); return; }
+      dir = path.posix.dirname(dir);
+    }
+  });
+  stale.forEach((n, f) => findings.push(`${f} is older than ${n} change${n === 1 ? "" : "s"} under it: still true?`));
+  // Informational only, so it stays out of the gate's block message.
+  if (bare.size && !opts.gate) findings.push(`changed folders with no CONTEXT.md: ${[...bare].slice(0, 6).join(", ")}. Create one only if a newcomer would need context the code does not show.`);
+
+  try {
+    const { store } = loadStore(ctx);
+    const noBody = Object.entries(store.items).filter(([, it]) => (it.status === "now" || it.status === "parked") && !it.body).sort(byPriority);
+    if (noBody.length) findings.push(`items with no body: ${noBody.slice(0, 8).map(([id, it]) => label(id, it)).join("; ")}${noBody.length > 8 ? "; ..." : ""}`);
+  } catch (e) { if (e instanceof Refusal) findings.push(e.message); else throw e; }
+
+  // The gate only runs when hooks are wired, so this matters for manual sweeps.
+  if (!opts.gate) {
+    const current = detectHarness();
+    if (!current) findings.push(NO_HOOKS);
+    else {
+      const found = hooksStatus(ctx.root).find((h) => h.harness === HARNESSES[current].name).found;
+      if (!found.gate || !found.rehydrate) findings.push(missingHooksMessage(current));
+    }
+  }
+
+  if (!findings.length) return ctx.report("sweep: nothing to flag");
+  ctx.report("sweep:");
+  findings.forEach((f) => ctx.report(`- ${f}`));
+  ctx.report("For each: record it (add/edit/done, CONTEXT.md, plan, decision) or, if nothing is worth recording, run `sweep --ack`.");
+}
+
 function cmdCheck(ctx) {
   let problems = 0;
   const say = (m) => { problems++; ctx.report(m); };
@@ -592,16 +784,18 @@ const COMMANDS = {
   flush: cmdFlush,
   stale: cmdStale,
   check: cmdCheck,
+  sweep: cmdSweep,
+  hooks: cmdHooks,
   "new-decision": cmdNewDecision,
   "new-plan": cmdNewPlan,
 };
 
-const BOOLEAN_FLAGS = ["private", "dry-run", "first", "archived"];
+const BOOLEAN_FLAGS = ["private", "dry-run", "first", "archived", "gate", "ack", "print"];
 
 function main(argv) {
   const cmd = argv[0];
   if (!cmd || cmd === "--help" || cmd === "-h" || !COMMANDS[cmd]) {
-    const usage = fs.readFileSync(__filename, "utf8").split("\n").slice(4, 22).map((l) => l.replace(/^\/\/ ?/, "")).join("\n");
+    const usage = fs.readFileSync(__filename, "utf8").split("\n").slice(4, 24).map((l) => l.replace(/^\/\/ ?/, "")).join("\n");
     console.log(usage);
     process.exit(cmd && !COMMANDS[cmd] ? 1 : 0);
   }
