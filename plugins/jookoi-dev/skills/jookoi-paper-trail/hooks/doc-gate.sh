@@ -20,7 +20,7 @@
 FINDINGS=$(doc sweep --gate --root "$REPO_ROOT" 2>/dev/null)
 [ -z "$FINDINGS" ] && exit 0
 
-emit_block "jookoi-paper-trail: work changed since the working set was last updated. Before ending, deal with each point below: record it through the jookoi-paper-trail script (add/edit/done, CONTEXT.md, plan, decision), or run \`sweep --ack\` if nothing is worth recording. Not a request to flush.
+emit_block "jookoi-paper-trail: work changed since the working set was last updated. Before ending, deal with each point below: record it through the jookoi-paper-trail script (add/edit/done, CONTEXT.md, plan, decision), then \`sweep --ack \"<reason>\"\` for whatever needs no record. Not a request to flush.
 
 $FINDINGS" "Stop"
 exit 0

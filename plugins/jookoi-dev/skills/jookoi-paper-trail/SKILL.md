@@ -1,10 +1,10 @@
 ---
 name: jookoi-paper-trail
-description: Repo working memory kept current for the whole session, not set up once. Work items in items.yaml via a script, CONTEXT.md, ARCHITECTURE.md, plans, decision history. Use when a repo has _architecture/ or items.yaml, when the user asks to document or track work, or when a decision, config change or incident happens.
+description: Writes anything worth remembering into the repo's own files instead of losing it to the transcript. That means work items (items.yaml, through a script), folder-level CONTEXT.md, ARCHITECTURE.md, plans and decision history. Use it every time something durable happens, not once per session. That covers a call made or rejected (by the user, or by you while implementing), a task started or finished, new work found, a config, deploy or topology change, an incident, a change that makes a doc wrong, and real work starting in a folder with no context file. Trigger on phrasings like 'write this down', 'note that', 'log it for later', 'we settled on X', 'let us go with', 'docs are stale', 'we are done with this chunk'. The user names the fact, not the file, so match on intent.
 metadata:
   author: Joosep Kõivistik
   repository: https://github.com/equilerex/jookoi-ai-market
-  last_updated: "2026-09-24T00:00:00Z"
+  last_updated: 2026-09-24
 ---
 
 # jookoi-paper-trail
@@ -13,53 +13,54 @@ Every repo keeps its own written memory: `CONTEXT.md` beside the code it describ
 
 Two things move information through this system: a **script** that owns every mechanical decision, and **you**, who own what happened and where it belongs. Items are written only through the script, by ID, with no prior read: never open or hand-edit `items.yaml`.
 
-**Never show a bare ID to the user.** Every mention of an item, in a reply, a plan, a doc or another item's body, is `id title`, for example "k4f9 Migrate the store to YAML". The user cannot act on "start k4f9" without cross-referencing. Script output already follows this.
+## Why this is your job
 
-## Session contract
+The transcript is gone at the end of the session and cut down at every compaction. The next session, and the user reviewing at commit time, know only what is in these files. Work that isn't recorded is invisible work: a call nobody can find gets relitigated, and a doc that still describes the old setup gets trusted.
 
-Once this skill is loaded, it stays in force until the session ends, including after compaction. Setting up the files is not the job. The job is recording things in the same turn they happen, because a note written at the end of the session is written from memory of a chat that has already lost detail.
+So recording is part of doing the work, not a step after it. A turn that makes a call, changes state, or makes a doc wrong ends with the record written. Doing it in the same turn keeps it accurate. Doing it at the end of the session means rebuilding it from a chat that has already lost detail, and that is how the important parts go missing. It applies just as much when you are executing someone else's plan: the plan holds their calls, not the ones you make while building it.
 
-- **First use in a session, and whenever you set up or adopt a repo:** run `list`, then `sweep`. If `sweep` reports missing hooks or a harness without them, follow `references/hooks.md` § Check and wire. Until hooks run, you are the gate: `sweep` before ending any turn that changed files.
-- **After every write through this skill,** end your reply with one line: `paper-trail: <what was recorded>`. That leaves a trail in the transcript that survives compaction and shows the user what landed.
-- **If you write a compaction summary,** keep a line saying jookoi-paper-trail is active in this repo and must be reloaded before the next write.
+After every write, end your reply with one line: `paper-trail: <what was recorded>`. It shows the user what landed and leaves a trail that survives compaction.
 
-## When to write
+## When this runs
 
 Write in the same turn as the trigger, not at the end.
 
 | Trigger | Destination | How |
 |---|---|---|
 | The user agrees to a call in chat (a tool, a provider, an approach, a rejection) | inside a planning session: that plan. Otherwise: `plans/decision-history/` | edit the plan's section, or `new-decision` |
+| While implementing, you make a call the plan didn't specify, or deviate from it | the plan's deviations section; `new-decision` if there is no plan or it changes a rule | section-surgical edit, or `new-decision`. Executing someone else's plan is not a reason to skip this: the plan records their calls, not yours |
+| You start implementing a plan | its items `start`ed, the plan's `Status:` line | `start <id>`, edit `Status:` |
 | Deployment, configuration, credentials handling or an external service changes | `ARCHITECTURE.md` or the folder's `CONTEXT.md` | section-surgical edit |
 | An incident: a leak, data loss, a broken deploy | an item with the remediation steps, plus a decision if a rule came out of it | `add --file`, `new-decision` |
 | A task starts, finishes, is parked or abandoned | the store | `start`, `done`, `park`, `drop` |
 | New work is identified | the store | `find` first, then `add --file` with a body |
-| A change makes a doc's statement false (an interface, a path, a constraint) | that doc | fix it before continuing the original task |
+| A change makes a doc's statement false (an interface, a path, a constraint) | that doc | fix it before continuing the original task. A doc that is confidently wrong costs more than one that is absent |
 | First real work in a folder with no context file | new `CONTEXT.md` there | from `assets/templates/CONTEXT.md`. Never bulk-generate across a tree |
 | A chunk of work finishes, or `now` runs dry | suggest a flush | `references/flush-prompt.md`. Judgement only |
 | A plan's `Status:` says done | `plans/implemented/`, unchanged | move the file (`references/file-formats.md`) |
-| End of a turn that changed files | check nothing slipped | `sweep`, then record, or `sweep --ack` if nothing is worth recording |
+| End of a turn that changed files | check nothing slipped | `sweep`, record what it surfaces, then `sweep --ack "<reason>"` for the rest. Never ack first: it clears the gate for everything changed so far |
 
-Session start: `list` shows `now` items plus the 3 latest done. `list --status=parked` when `now` is thin. Untouched across sessions is the steady state.
+Untouched across sessions is the steady state. A quiet store is fine; a busy session with a quiet store is not.
 
 ## Items carry a body
 
 An item is a scratchpad for the next session, not a to-do line. Anything that isn't obvious from its title gets a body: why it exists, what state it's in, the next concrete step, and pointers to files, plans or decisions. Title-only is for items whose title says everything. `add` and `edit` print a note when the body is empty.
 
-```yaml
-# add --file item.yaml
-title: Rotate the leaked triage token
-status: now
-body: |
-  Leaked in commit history on 24-09-2026 (decision 002). Redaction in `triage.js` stops
-  new leaks but cannot un-leak this one: rotation is the real fix.
+Write the payload as a markdown file and pass it with `add --file item.md` (or `edit <id> --file item.md`). Frontmatter is optional (`status`, placement), the `# ` line is the title, and everything below it is the body. No quoting or indentation rules apply:
 
-  Next: revoke in GitHub settings, create a fine-grained token (issues:write only),
-  update the `TRIAGE_TOKEN` secret, re-run the triage workflow.
-  Blocked on: ko2q Push the redacted history.
+```markdown
+---
+status: parked
+---
+# Rotate the leaked triage token
+
+Leaked in commit history on 24-09-2026 (decision 002). Redaction in `triage.js` stops new leaks but cannot un-leak this one, so rotation is the real fix.
+
+Next: revoke in GitHub settings, create a fine-grained token, update the secret, re-run the workflow.
+Blocked on: ko2q Push the redacted history.
 ```
 
-`--file` works in every shell. `add -` reads the same YAML from stdin.
+`--file` works in every shell. `add -` reads the same from stdin. YAML payloads (`title:`, `body: |`) still work.
 
 ## Routing
 
@@ -98,14 +99,14 @@ node ~/.agents/skills/jookoi-paper-trail/scripts/jookoi-paper-trail.js <command>
 list [--status=S] [--stale=N]      now items + 3 latest done; or one status
 list --archived [--last N]          flushed items, newest first
 find "<text>"  show <id>  count    search everything, one item (archived too), counts
-add --title "<t>" | add - | add --file F   payload: YAML {title, body, status}
+add --title "<t>" | add - | add --file F   payload: markdown (# Title, body) or YAML
     [--after=ID|--before=ID|--first|--last]
 done|park|start|drop <id>          status changes
 edit <id> --title "<t>" | - | --file F   move <id> <placement>
 flush [--before=DATE]              done+dropped -> archive/items-YYYY-MM.yaml
 render                             store as markdown, for a human
 stale [days]  check                stale items and context files; validate
-sweep [--ack]                      uncommitted work vs store and context files
+sweep [--ack "<reason>"]           uncommitted work vs store and context files
 hooks [--print [--harness=H]]      which hooks are wired; --print: fragment to merge
 new-decision "<title>"  new-plan "<topic>"
 ```
@@ -118,6 +119,7 @@ No Node available? `references/pipeline.md` has the manual fallback.
 
 ## Hard rules
 
+- **Never show a bare ID to the user.** Every mention of an item, in a reply, a plan, a doc or another item's body, is `id title`, for example "k4f9 Migrate the store to YAML". The user cannot act on "start k4f9" without cross-referencing.
 - **Never regenerate a prose file to change one section.** Target the heading, rewrite to the next one, leave every other byte alone.
 - **Never write a secret.** API key, token, credential, connection string: flag it, don't record it. This covers item bodies and command output too. Don't print any part of a secret, not even a prefix.
 - **Never leave a placeholder.** `TBD` / `TODO` / `[...]` — fill it or drop the section.
@@ -125,6 +127,12 @@ No Node available? `references/pipeline.md` has the manual fallback.
 - **Never duplicate across levels.** Keep content at the more specific level; delete the copy.
 - **Never carry a wiped name forward.** Once something is removed or rejected, live docs stop naming it — `plans/decision-history/` holds the name and the reasoning. Full rule: `references/file-formats.md`.
 - **A folder's `CONTEXT.md` dies with the folder** — but check inbound references and promote anything durable first (`references/operations.md`).
+
+## Session start, hooks, compaction
+
+- **Session start:** `list` (`now` items plus the 3 latest done), then `sweep`. `list --status=parked` when `now` is thin.
+- **Hooks** remind you at session start and check at the end of a turn, where the harness supports them. If `sweep` reports them missing or unsupported, follow `references/hooks.md`. Until they run, you are the gate.
+- **Compaction:** if you write the summary, keep a line saying jookoi-paper-trail is active in this repo and must be reloaded before the next write.
 
 ## Bundled assets
 

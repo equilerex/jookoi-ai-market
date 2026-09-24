@@ -70,7 +70,7 @@ Session checks, read-only apart from `--ack`:
 | Command | Returns |
 |---|---|
 | `sweep` | Uncommitted files newer than the last store write, `CONTEXT.md` files older than changes under them, changed folders with no context file, items with no body, missing hooks for this harness, or a note that the harness has none |
-| `sweep --ack` | Records "nothing to record for the changes so far", which quiets the gate until files change again |
+| `sweep --ack "<reason>"` | Records why the remaining changes need no record, which quiets the gate until files change again. Refuses without a reason. Run it after recording, never before |
 | `sweep --gate` | Used by `doc-gate.sh`: prints only when the gate should block |
 | `hooks` | Per harness, whether the gate, rehydrate and preserve hooks are wired, and where |
 | `hooks --print [--harness=H]` | The hooks fragment for this harness (or `H`: `claude`, `gemini`, `copilot`) with this install's paths, and the file it merges into |
@@ -88,14 +88,21 @@ Writes, each a single call with no prior read:
 | `move <id> <placement>` | Reprioritise |
 | `flush [--before=<date>]` | Moves `done` and `dropped` items to `archive/items-YYYY-MM.yaml` by month of `ts_done`. Touches nothing else. Refuses on an ID collision |
 
-The payload is YAML (JSON is valid YAML) with keys `title`, `body`, `status`, and optionally placement keys. Use `--file` under PowerShell, where heredocs differ:
+The payload is markdown or YAML. Use `--file` under PowerShell, where heredocs differ.
 
-```yaml
-title: Rewrite flush so it stops wiping the file
+Markdown is the default choice: a `.md` file, or stdin whose first line (after any frontmatter) is `# ` and has no `title:` key. Frontmatter holds `status`, `priority` and placement keys. The `# ` line is the title, and the text below it is the body, copied as written:
+
+```markdown
+---
 status: parked
-body: |
-  Free-form markdown, copied in as written.
+after: k4f9
+---
+# Rewrite flush so it stops wiping the file
+
+Free-form markdown, copied in as written.
 ```
+
+YAML (JSON is valid YAML) uses the keys `title`, `body`, `status` and placement keys. Quote a title that contains `: `, and indent the body two spaces under `body: |`. A malformed payload is refused with these rules in the message.
 
 Placement is `--after=<id>`, `--before=<id>`, `--first` or `--last` (default). Name a neighbour already seen in `list`; the script computes the number. `--priority=<n>` exists for scripting only.
 

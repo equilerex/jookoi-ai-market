@@ -27,7 +27,7 @@ done
 
 OUT="jookoi-paper-trail — working set:
 $OUT
-This repo uses jookoi-paper-trail for the whole session, not as a setup step: load the skill before your first write, and record decisions, config or deploy changes, incidents and finished work in the same turn they happen. If you write a compaction summary, keep this paragraph in it.
+This repo uses jookoi-paper-trail. Recording is part of the work, not a step after it: whenever a call is made (by the user or by you), a task starts or finishes, config or topology changes, or a doc goes wrong, use the skill and write it in that same turn. The next session knows only what is in these files. If you write a compaction summary, keep this paragraph in it.
 Change items only through the script (add/done/park/start/drop/edit/move), never by hand-editing items.yaml. Always name an item as id plus title, never a bare id. \`show <id>\` for a body, \`list --status=parked\` for the backlog, \`list --archived --last N\` for older items, \`find\` before adding. Do not read plans/decision-history/ unless a doc cites it or the user asks why."
 
 # Start the local viewer if it is not running (idempotent, quiet). JOOKOI_VIEWER=0 turns this off.

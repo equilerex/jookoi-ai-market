@@ -10,14 +10,14 @@
 //   jookoi-paper-trail show <id>                            resolves archived ids too
 //   jookoi-paper-trail count                                counts per status, last flush
 //   jookoi-paper-trail render [--status=S]                  store as markdown, ids carry the repo prefix
-//   jookoi-paper-trail add --title "<t>" | - | --file F     payload: YAML/JSON {title, body, status, priority, after, before, first, last}
+//   jookoi-paper-trail add --title "<t>" | - | --file F     payload: markdown (.md: frontmatter, # Title, body) or YAML/JSON {title, body, status, ...}
 //   jookoi-paper-trail done|park|start|drop <id>
 //   jookoi-paper-trail edit <id> --title "<t>" | - | --file F   payload keys given replace the item's
 //   jookoi-paper-trail move <id> <placement>                placement: --after=ID --before=ID --first --last
 //   jookoi-paper-trail flush [--before=DATE]                done+dropped -> archive/items-YYYY-MM.yaml
 //   jookoi-paper-trail stale [DAYS]                         stale now items, plus CONTEXT.md files behind their folder
 //   jookoi-paper-trail check                                validate the store and managed files
-//   jookoi-paper-trail sweep [--gate] [--ack]               uncommitted work vs the store and context files
+//   jookoi-paper-trail sweep [--gate] [--ack "<reason>"]    uncommitted work vs the store and context files
 //   jookoi-paper-trail hooks [--print [--harness=H]]        which hooks are wired; --print: fragment for this install
 //   jookoi-paper-trail new-decision "<title>"               next NNN in plans/decision-history/, listed in index.md
 //   jookoi-paper-trail new-plan "<topic>"                   dated plan file from template
@@ -233,19 +233,46 @@ function cleanBody(s) {
   return String(s == null ? "" : s).replace(/\r\n/g, "\n").replace(/^\n+|\n+$/g, "");
 }
 
-// Payload for add/edit: `-` (stdin) or --file carry YAML (JSON is valid YAML). --title alone is a title-only item.
+const PAYLOAD_HELP = "Easiest form is markdown in a .md file: optional frontmatter (status, priority, after, before, first, last), then a `# Title` line, then the body. In YAML, quote a title that contains \": \" and indent the body two spaces under `body: |`.";
+
+// Markdown payload: optional `---` frontmatter, a `# Title` line, then the body.
+// Agents write this without escaping mistakes, which YAML invites.
+function parseMarkdownPayload(text) {
+  let rest = text.replace(/\r\n/g, "\n").replace(/^﻿/, "");
+  let meta = {};
+  const fm = rest.match(/^---\n([\s\S]*?)\n---\n?/);
+  if (fm) {
+    meta = parseYaml("frontmatter", fm[1]) || {};
+    if (typeof meta !== "object" || Array.isArray(meta)) refuse("frontmatter", "expected key: value lines");
+    rest = rest.slice(fm[0].length);
+  }
+  const h = rest.match(/^\s*# (.+)\n?/);
+  if (!h) refuse("payload", `markdown needs a "# Title" line after any frontmatter. ${PAYLOAD_HELP}`);
+  if (meta.title !== undefined || meta.body !== undefined) refuse("frontmatter", "title and body come from the # heading and the text below it, not frontmatter");
+  return { ...meta, title: h[1], body: rest.slice(h[0].length) };
+}
+
+function isMarkdownPayload(text, file) {
+  if (file && /\.md$/i.test(file)) return true;
+  const afterFm = text.replace(/\r\n/g, "\n").replace(/^---\n[\s\S]*?\n---\n?/, "");
+  return /^\s*# /.test(afterFm) && !/^title\s*:/m.test(text);
+}
+
+// Payload for add/edit: `-` (stdin) or --file carry markdown or YAML (JSON is valid YAML). --title alone is a title-only item.
 function readPayload(args, opts) {
   let text = null;
+  let file = null;
   if (args[0] === "-") text = fs.readFileSync(0, "utf8");
   else if (opts.file) {
-    const file = path.resolve(opts.file);
+    file = path.resolve(opts.file);
     if (!fs.existsSync(file)) refuse("--file", `${file} does not exist`);
     text = fs.readFileSync(file, "utf8");
   }
   let p = {};
-  if (text !== null) {
-    p = parseYaml("payload", text);
-    if (!p || typeof p !== "object" || Array.isArray(p)) refuse("payload", "expected a YAML mapping with title, body, status, priority");
+  if (text !== null && isMarkdownPayload(text, file)) p = parseMarkdownPayload(text);
+  else if (text !== null) {
+    try { p = parseYaml("payload", text); } catch (e) { if (e instanceof Refusal) throw new Refusal(`${e.message.replace(/ -- fix by hand$/, "")}. ${PAYLOAD_HELP}`); throw e; }
+    if (!p || typeof p !== "object" || Array.isArray(p)) refuse("payload", `expected a mapping with title and body. ${PAYLOAD_HELP}`);
   }
   const allowed = ["title", "body", "status", "priority", "after", "before", "first", "last"];
   Object.keys(p).forEach((k) => { if (!allowed.includes(k)) refuse("payload", `unknown key ${k} (allowed: ${allowed.join(", ")})`); });
@@ -635,11 +662,13 @@ function hhmm(ms) {
 
 // Compares uncommitted work against the working set and the context files. Mechanical
 // only: it says what might be unrecorded; deciding what to write is the model's job.
-function cmdSweep(ctx, _args, opts) {
+function cmdSweep(ctx, [reason], opts) {
   const ack = ackFile(ctx.root);
   if (opts.ack) {
-    if (!ctx.dryRun) { fs.mkdirSync(path.dirname(ack), { recursive: true }); fs.writeFileSync(ack, new Date().toISOString() + "\n"); }
-    return ctx.report("acknowledged: nothing to record for the changes so far. The gate stays quiet until files change again.");
+    // A reason makes the ack a judgement about these changes, not a way to clear the output.
+    if (!reason || reason.trim().length < 15) refuse("sweep --ack", "needs a reason, e.g. sweep --ack \"only formatting in src/, no calls or state changes\". Record first if anything in the sweep is unrecorded, then ack only what is left.");
+    if (!ctx.dryRun) { fs.mkdirSync(path.dirname(ack), { recursive: true }); fs.writeFileSync(ack, `${new Date().toISOString()} ${reason.trim()}\n`); }
+    return ctx.report(`acknowledged: ${reason.trim()}. The gate stays quiet until files change again.`);
   }
 
   let porcelain;
@@ -660,7 +689,13 @@ function cmdSweep(ctx, _args, opts) {
 
   const findings = [];
   const unrecorded = changed.filter((p) => mtime(path.join(ctx.root, p)) > recorded);
-  if (unrecorded.length) findings.push(`${unrecorded.length} changed file${unrecorded.length === 1 ? "" : "s"} newer than the last working-set write (${hhmm(storeWrite)}): ${unrecorded.slice(0, 8).join(", ")}${unrecorded.length > 8 ? ", ..." : ""}`);
+  if (unrecorded.length) {
+    // Grouped by folder: a flat list of 18 paths reads as noise and invites a blanket ack.
+    const groups = new Map();
+    unrecorded.forEach((p) => { const d = path.posix.dirname(p); const k = d === "." ? "(root)" : d.split("/").slice(0, 2).join("/"); groups.set(k, (groups.get(k) || 0) + 1); });
+    const shown = [...groups].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} (${n})`);
+    findings.push(`${unrecorded.length} changed file${unrecorded.length === 1 ? "" : "s"} newer than the last working-set write (${hhmm(storeWrite)}), by folder: ${shown.slice(0, 8).join(", ")}${shown.length > 8 ? ", ..." : ""}`);
+  }
 
   const stale = new Map();
   const bare = new Set();
@@ -699,7 +734,11 @@ function cmdSweep(ctx, _args, opts) {
   if (!findings.length) return ctx.report("sweep: nothing to flag");
   ctx.report("sweep:");
   findings.forEach((f) => ctx.report(`- ${f}`));
-  ctx.report("For each: record it (add/edit/done, CONTEXT.md, plan, decision) or, if nothing is worth recording, run `sweep --ack`.");
+  ctx.report("Before acking, check what the changes carry, not just the files:");
+  ctx.report("- a call made since the last record, by the user or by you while implementing -> plan's deviations section, or new-decision");
+  ctx.report("- a topology, config, deploy or credentials change -> ARCHITECTURE.md or the folder's CONTEXT.md");
+  ctx.report("- work started, finished or found -> start / done / add (with a body)");
+  ctx.report("Then `sweep --ack \"<why the rest needs no record>\"`, only after recording.");
 }
 
 function cmdCheck(ctx) {

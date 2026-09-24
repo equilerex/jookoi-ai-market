@@ -1,10 +1,10 @@
 ---
 name: jookoi-create-skill
-description: Create or adapt llm skills Portable, reusable, host-agnostic workflows for creating SKILL.md
+description: Create, adapt or review LLM skills (SKILL.md and its bundled files) as portable, host-agnostic workflows. Use when writing a new skill, editing an existing one, or tuning a skill's description or triggering.
 license: Apache-2.0
 metadata:
   last_updated: "2026-09-23T00:00:00Z"
-  author: Joosep Kõivistik Modified 2026-09-19 from the Apache-licensed skill-creator: retained its draft, test, review, and iteration workflow; replaced host-bound instructions with portable ones.
+  author: "Joosep Kõivistik. Modified 2026-09-19 from the Apache-licensed skill-creator: retained its draft, test, review, and iteration workflow; replaced host-bound instructions with portable ones."
   repository: https://github.com/equilerex/jookoi-ai-market
 ---
 
@@ -40,7 +40,14 @@ description: Use when a specific recurring task needs this workflow.
 Instructions that let the agent perform the task.
 ```
 
-The description is for selection: say when the skill applies and where its boundary is. Keep it as minimal as possible: one sentence, maximum two. Get straight to the point without conversational padding or sounding like a human. It is injected into LLM discovery prompts, so every extra word costs tokens across all conversations. Never include angle brackets (< or >) in name or description.
+The description is for selection: say when the skill applies and where its boundary is. It is the only part of the skill the model sees before deciding to load it, so it decides whether the skill runs at all. No conversational padding. How long it should be depends on how the skill gets invoked:
+
+- **Invoked on request** (the user names the task or types the slash command): one or two sentences. Extra words cost tokens in every conversation and buy nothing.
+- **Must trigger on its own mid-task** (the model has to notice an event and act, as in documentation, memory, style or safety skills): list the events that should trigger it and the phrasings users actually say, and state why it matters, up to the 1024-character limit. A short description here gets the skill loaded once at session start, if at all, and never again.
+
+Evidence: `jookoi-paper-trail` v1 had an event-triggered description ("use whenever something durable just happened", with trigger phrasings and "match on intent") and was invoked reliably throughout sessions. In the v2 refactor it was cut to one line for token savings, and after that, trial sessions loaded it once, set it up, and stopped recording. Restoring the event-triggered description was the fix. At about 200 tokens per long description, the saving is not worth losing the trigger.
+
+The description must be valid YAML. In an unquoted value, a colon followed by a space (`: `) breaks the frontmatter, and so does ` #`. Rephrase, or quote the whole value. Validate with a real YAML parser, not by eye. Never include angle brackets (< or >) in name or description.
 
 Frontmatter constraints:
 - `name`: 1 to 64 characters, lowercase alphanumeric and single hyphens (`^[a-z0-9]+(-[a-z0-9]+)*$`), matching the directory name. No consecutive hyphens (`--`). Never use reserved words `claude` or `anthropic`. The directory name cannot be `synced`.
