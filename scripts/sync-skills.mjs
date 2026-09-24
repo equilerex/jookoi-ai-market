@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Copies every skill under plugins/*/skills/ into each folder listed in SKILL_TARGETS
-// (from .env, defaults to ~/.agents/skills and ~/.claude/skills).
+// (from .env, defaults to ~/.agents/skills,~/.claude/skills).
 // Skips skills whose target copy is identical, and skips (with a warning) targets that are
 // newer than this repo's copy unless --force is passed. Never deletes skills it does not own.
 
@@ -10,12 +10,10 @@ import path from 'node:path'
 import crypto from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 
-const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const DEFAULT_TARGETS = '~/.agents/skills,~/.claude/skills'
-const force = process.argv.includes('--force')
-const dryRun = process.argv.includes('--dry-run')
+export const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+export const DEFAULT_TARGETS = '~/.agents/skills,~/.claude/skills'
 
-function loadEnv() {
+export function loadEnv() {
   const envPath = path.join(rootDir, '.env')
   const env = {}
   if (!fs.existsSync(envPath)) return env
@@ -26,12 +24,12 @@ function loadEnv() {
   return env
 }
 
-function resolveTarget(p) {
+export function resolveTarget(p) {
   const expanded = p === '~' ? os.homedir() : p.replace(/^~[\\/]/, os.homedir() + path.sep)
   return path.resolve(rootDir, expanded)
 }
 
-function listFiles(dir, base = dir) {
+export function listFiles(dir, base = dir) {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
     const full = path.join(dir, e.name)
     return e.isDirectory() ? listFiles(full, base) : [path.relative(base, full)]
@@ -39,7 +37,7 @@ function listFiles(dir, base = dir) {
 }
 
 // Content hash and newest mtime of a skill folder.
-function fingerprint(dir) {
+export function fingerprint(dir) {
   const hash = crypto.createHash('sha1')
   let newest = 0
   for (const rel of listFiles(dir)) {
@@ -50,9 +48,10 @@ function fingerprint(dir) {
   return { hash: hash.digest('hex'), newest }
 }
 
-function findSkills() {
+export function findSkills() {
   const pluginsDir = path.join(rootDir, 'plugins')
   const skills = []
+  if (!fs.existsSync(pluginsDir)) return skills
   for (const plugin of fs.readdirSync(pluginsDir, { withFileTypes: true })) {
     const skillsDir = path.join(pluginsDir, plugin.name, 'skills')
     if (!plugin.isDirectory() || !fs.existsSync(skillsDir)) continue
@@ -65,38 +64,49 @@ function findSkills() {
   return skills
 }
 
-const env = loadEnv()
-const targets = (env.SKILL_TARGETS || DEFAULT_TARGETS).split(',').map((t) => t.trim()).filter(Boolean).map(resolveTarget)
-const skills = findSkills()
-const counts = { copied: 0, same: 0, skipped: 0 }
+export function syncSkills({ targets, force = false, dryRun = false }) {
+  const resolvedTargets = targets.map((t) => typeof t === 'string' ? resolveTarget(t) : t)
+  const skills = findSkills()
+  const counts = { copied: 0, same: 0, skipped: 0 }
 
-console.log(`${dryRun ? '[dry run] ' : ''}Syncing ${skills.length} skill(s) to ${targets.length} target(s)\n`)
+  console.log(`${dryRun ? '[dry run] ' : ''}Syncing ${skills.length} skill(s) to ${resolvedTargets.length} target(s)\n`)
 
-for (const target of targets) {
-  console.log(target)
-  for (const skill of skills) {
-    const dest = path.join(target, skill.name)
-    const src = fingerprint(skill.dir)
-    let action = 'new'
-    if (fs.existsSync(dest)) {
-      const cur = fingerprint(dest)
-      if (cur.hash === src.hash) { counts.same++; continue }
-      if (cur.newest > src.newest && !force) {
-        counts.skipped++
-        console.log(`  skipped  ${skill.name}  (target is newer, use --force to overwrite)`)
-        continue
+  for (const target of resolvedTargets) {
+    console.log(target)
+    for (const skill of skills) {
+      const dest = path.join(target, skill.name)
+      const src = fingerprint(skill.dir)
+      let action = 'new'
+      if (fs.existsSync(dest)) {
+        const cur = fingerprint(dest)
+        if (cur.hash === src.hash) { counts.same++; continue }
+        if (cur.newest > src.newest && !force) {
+          counts.skipped++
+          console.log(`  skipped  ${skill.name}  (target is newer, use --force to overwrite)`)
+          continue
+        }
+        action = 'updated'
       }
-      action = 'updated'
+      if (!dryRun) {
+        fs.rmSync(dest, { recursive: true, force: true })
+        fs.mkdirSync(target, { recursive: true })
+        fs.cpSync(skill.dir, dest, { recursive: true })
+      }
+      counts.copied++
+      console.log(`  ${action.padEnd(8)} ${skill.name}`)
     }
-    if (!dryRun) {
-      fs.rmSync(dest, { recursive: true, force: true })
-      fs.mkdirSync(target, { recursive: true })
-      fs.cpSync(skill.dir, dest, { recursive: true })
-    }
-    counts.copied++
-    console.log(`  ${action.padEnd(8)} ${skill.name}`)
   }
+
+  console.log(`\n${counts.copied} copied, ${counts.same} already current, ${counts.skipped} skipped`)
+  return counts
 }
 
-console.log(`\n${counts.copied} copied, ${counts.same} already current, ${counts.skipped} skipped`)
-process.exit(counts.skipped ? 1 : 0)
+// Run directly if invoked via CLI
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const force = process.argv.includes('--force')
+  const dryRun = process.argv.includes('--dry-run')
+  const env = loadEnv()
+  const rawTargets = (env.SKILL_TARGETS || DEFAULT_TARGETS).split(',').map((t) => t.trim()).filter(Boolean)
+  const counts = syncSkills({ targets: rawTargets, force, dryRun })
+  process.exit(counts.skipped ? 1 : 0)
+}
