@@ -30,6 +30,7 @@ const path = require("path");
 const crypto = require("crypto");
 const { execSync } = require("child_process");
 const yaml = require("./vendor/js-yaml.cjs.js");
+const registry = require("./registry.js");
 
 const TEMPLATES = path.join(__dirname, "..", "assets", "templates");
 const STATUSES = ["now", "parked", "done", "dropped"];
@@ -233,7 +234,11 @@ function cleanBody(s) {
 function readPayload(args, opts) {
   let text = null;
   if (args[0] === "-") text = fs.readFileSync(0, "utf8");
-  else if (opts.file) text = fs.readFileSync(path.resolve(opts.file), "utf8");
+  else if (opts.file) {
+    const file = path.resolve(opts.file);
+    if (!fs.existsSync(file)) refuse("--file", `${file} does not exist`);
+    text = fs.readFileSync(file, "utf8");
+  }
   let p = {};
   if (text !== null) {
     p = parseYaml("payload", text);
@@ -635,6 +640,10 @@ function main(argv) {
   try {
     COMMANDS[cmd](ctx, positional, opts);
     lines.forEach((l) => console.log(l));
+    // Remember repos that use the store so the viewer can list them. Best effort, never fatal.
+    if (!opts.dryRun && fs.existsSync(path.join(ctx.arch, "items.yaml"))) {
+      try { registry.register(root); } catch { /* the registry is a convenience */ }
+    }
   } catch (e) {
     if (e instanceof Refusal) {
       console.error(`REFUSED -- ${e.message}`);

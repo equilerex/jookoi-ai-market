@@ -6,9 +6,8 @@
     "start": "node scripts/setup.mjs",
     "setup": "node scripts/setup.mjs",
 
-    "// claude": "Installs the plugin from this local checkout into Claude Code: registers the marketplace, then installs jookoi-dev@jookoi-ai-market.",
-    "claude": "claude plugin marketplace add . && claude plugin install jookoi-dev@jookoi-ai-market",
-    "claud": "claude plugin marketplace add . && claude plugin install jookoi-dev@jookoi-ai-market",
+    "// claude": "Installs the plugin from this local checkout into Claude Code: registers the marketplace, refreshes it, then installs or updates jookoi-dev@jookoi-ai-market. Bump plugin.json version first.",
+    "claude": "claude plugin marketplace add ./ && claude plugin marketplace update jookoi-ai-market && claude plugin install jookoi-dev@jookoi-ai-market && claude plugin update jookoi-dev@jookoi-ai-market",
 
     "// sync": "Copies the latest skills from plugins/*/skills/ into folders listed in SKILL_TARGETS (.env). Run after pulling or editing a skill.",
     "sync": "node scripts/sync-skills.mjs",

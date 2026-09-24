@@ -50,6 +50,7 @@ That file is a coarse recovery record, separate from the store and separate from
 
 - the `list` output (now items plus the latest done), for each layer;
 - a one-line notice if `_jookoi-architecture/session-log.md` has undrained content;
+- the viewer link, after starting the viewer if it is not running (`references/viewer.md`), with an instruction to give it to the user once. `JOOKOI_VIEWER=0` skips this;
 - pointers, no rules content: change items only through the script, name items as `id title`, `show <id>` for a body, `list --archived --last N` for older items, `find` before adding, and do not read `plans/decision-history/` unless a doc cites it or the user asks why.
 
 

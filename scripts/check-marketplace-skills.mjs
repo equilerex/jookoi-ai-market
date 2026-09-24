@@ -218,6 +218,46 @@ function applyMetadataPatch(skillMdPath, currentFields, repoConfig) {
   console.log(`Updated metadata credit in ${path.relative(rootDir, skillMdPath)}`)
 }
 
+function git(args) {
+  const r = spawnSync('git', args, { cwd: rootDir, encoding: 'utf8' })
+  return r.status === 0 ? r.stdout.trim() : null
+}
+
+// Claude Code caches a plugin per version, so any change under plugins/<name>/ needs a version bump.
+// Compares the working tree (committed, staged, unstaged, untracked) to the last commit that touched "version".
+function checkVersionBump(pluginName, fix) {
+  const rel = `plugins/${pluginName}`
+  const jsonRel = `${rel}/.claude-plugin/plugin.json`
+  const jsonPath = path.join(rootDir, jsonRel)
+  if (!fs.existsSync(jsonPath)) return null
+
+  const base = git(['log', '-1', '--format=%H', '-G"version"', '--', jsonRel])
+  if (!base) return null
+
+  const baseJson = git(['show', `${base}:${jsonRel}`])
+  const raw = fs.readFileSync(jsonPath, 'utf8')
+  const current = JSON.parse(raw).version
+  const baseVersion = baseJson ? JSON.parse(baseJson).version : null
+  if (!current || current !== baseVersion) return null // already bumped since the last version commit
+
+  const changed = new Set([
+    ...(git(['diff', '--name-only', base, '--', rel]) || '').split('\n'),
+    ...(git(['ls-files', '-o', '--exclude-standard', '--', rel]) || '').split('\n'),
+  ].filter((f) => f && f !== jsonRel))
+  if (changed.size === 0) return null
+
+  const parts = current.split('.').map(Number)
+  if (parts.length !== 3 || parts.some(Number.isNaN)) return `plugin.json: ${changed.size} file(s) changed since version ${current}, bump the version manually`
+  const next = `${parts[0]}.${parts[1] + 1}.0`
+
+  if (fix) {
+    fs.writeFileSync(jsonPath, raw.replace(/("version"\s*:\s*")[^"]+(")/, `$1${next}$2`), 'utf8')
+    console.log(`Bumped ${pluginName} ${current} -> ${next} (${changed.size} file(s) changed since last version commit)`)
+    return null
+  }
+  return `plugin.json: ${changed.size} file(s) changed since version ${current}, version not bumped (Claude Code caches per version)`
+}
+
 function auditMarketplace(options = {}) {
   const pluginsDir = path.join(rootDir, 'plugins')
   const readmePath = path.join(rootDir, 'README.md')
@@ -241,6 +281,9 @@ function auditMarketplace(options = {}) {
     const pluginJson = fs.existsSync(pluginJsonPath)
       ? JSON.parse(fs.readFileSync(pluginJsonPath, 'utf8'))
       : null
+
+    const bumpIssue = checkVersionBump(pluginName, options.fixMetadata)
+    if (bumpIssue) missingReport.push({ plugin: pluginName, skill: '(plugin)', description: '', issues: [bumpIssue] })
 
     if (!fs.existsSync(skillsDir)) continue
 

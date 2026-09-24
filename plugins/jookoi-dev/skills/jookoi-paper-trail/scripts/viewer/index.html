@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paper Trail Viewer</title>
+<style>
+  :root {
+    --bg: #f6f6f4; --panel: #ffffff; --ink: #1c1c1a; --muted: #6b6b66; --line: #e2e2dd;
+    --accent: #2f5fd0; --accent-ink: #ffffff; --now: #2f8f4e; --parked: #b7791f; --done: #6b6b66; --dropped: #b23b3b;
+    --code: #efefea;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #151514; --panel: #1e1e1c; --ink: #e8e8e4; --muted: #9a9a93; --line: #2f2f2c;
+      --accent: #7c9cf0; --accent-ink: #10131c; --now: #5cc27d; --parked: #e0a94a; --done: #9a9a93; --dropped: #e07a7a;
+      --code: #2a2a27;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #151514; --panel: #1e1e1c; --ink: #e8e8e4; --muted: #9a9a93; --line: #2f2f2c;
+    --accent: #7c9cf0; --accent-ink: #10131c; --now: #5cc27d; --parked: #e0a94a; --done: #9a9a93; --dropped: #e07a7a;
+    --code: #2a2a27;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .app { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
+  aside { border-right: 1px solid var(--line); background: var(--panel); padding: 16px 12px; position: sticky; top: 0; height: 100vh; overflow: auto; }
+  aside h1 { font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 0 8px 12px; font-weight: 600; }
+  .repo { display: flex; justify-content: space-between; gap: 8px; width: 100%; text-align: left; border: 0; background: none; color: var(--ink);
+    padding: 8px; border-radius: 8px; cursor: pointer; font: inherit; }
+  .repo:hover { background: var(--bg); }
+  .repo[aria-current="true"] { background: var(--accent); color: var(--accent-ink); }
+  .repo small { opacity: .75; }
+  .repo.missing { opacity: .5; }
+  .hint { color: var(--muted); font-size: 13px; margin: 16px 8px 0; }
+  .hint code { background: var(--code); padding: 1px 5px; border-radius: 4px; font-size: 12px; word-break: break-all; }
+  main { padding: 20px 24px 60px; max-width: 980px; width: 100%; }
+  .bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; }
+  .bar h2 { margin: 0 auto 0 0; font-size: 20px; }
+  .bar .path { color: var(--muted); font-size: 12px; font-weight: 400; margin-left: 8px; }
+  input[type=search], select, button.ctl {
+    background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; font: inherit;
+  }
+  input[type=search] { flex: 1 1 200px; min-width: 0; }
+  button.ctl { cursor: pointer; }
+  button.ctl:hover { border-color: var(--accent); }
+  .stamp { color: var(--muted); font-size: 12px; }
+  .live { display: flex; gap: 5px; align-items: center; font-size: 14px; color: var(--muted); cursor: pointer; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+  .tab { border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 999px; padding: 5px 12px; cursor: pointer; font: inherit; font-size: 14px; }
+  .tab[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .tab span { opacity: .7; margin-left: 4px; }
+  ul.items { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .item { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+  .head { display: flex; gap: 10px; align-items: baseline; padding: 10px 12px; cursor: pointer; }
+  .item:not(.has-body) .head { cursor: default; }
+  .id { font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--muted); background: var(--code); padding: 1px 6px; border-radius: 5px; flex: none; }
+  .title { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; align-self: center; }
+  .dot.now { background: var(--now); } .dot.parked { background: var(--parked); } .dot.done { background: var(--done); } .dot.dropped { background: var(--dropped); }
+  .tag { font-size: 12px; color: var(--muted); flex: none; }
+  .body { border-top: 1px solid var(--line); padding: 10px 14px 14px; overflow-wrap: anywhere; }
+  .body h3, .body h4, .body h5 { margin: 12px 0 4px; }
+  .body p { margin: 6px 0; }
+  .body ul { margin: 6px 0; padding-left: 22px; }
+  .body pre { background: var(--code); padding: 10px; border-radius: 8px; overflow: auto; font-size: 13px; }
+  .body code { background: var(--code); padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+  .body pre code { background: none; padding: 0; }
+  .meta { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--muted); font-size: 12px; margin-top: 10px; align-items: center; }
+  .meta button { border: 1px solid var(--line); background: none; color: var(--ink); border-radius: 6px; padding: 2px 8px; cursor: pointer; font: inherit; font-size: 12px; }
+  .empty, .error { color: var(--muted); padding: 30px 8px; text-align: center; }
+  .error { color: var(--dropped); }
+  @media (max-width: 720px) {
+    .app { grid-template-columns: 1fr; }
+    aside { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+    main { padding: 16px; }
+    input[type=search] { min-width: 0; flex: 1; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <h1>Repos</h1>
+    <div id="repos"></div>
+    <p class="hint" id="hint"></p>
+  </aside>
+  <main>
+    <div class="bar">
+      <h2 id="repoTitle">Paper Trail</h2>
+      <select id="layer" aria-label="Layer"></select>
+      <input id="q" type="search" placeholder="Search title and body" aria-label="Search">
+      <span class="stamp" id="stamp" aria-live="polite"></span>
+      <button class="ctl" id="refresh" title="Re-read the YAML files now">Refresh</button>
+      <label class="live" title="Re-read every 4 seconds while this tab is visible"><input type="checkbox" id="live" checked> Live</label>
+      <button class="ctl" id="copyAll" title="Copy the visible items as markdown">Copy as markdown</button>
+      <button class="ctl" id="theme" title="Toggle theme">Theme</button>
+    </div>
+    <div class="tabs" id="tabs" role="group" aria-label="Status"></div>
+    <div id="list"></div>
+  </main>
+</div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const STATUS_ORDER = ["now", "parked", "done", "dropped", "archived"];
+const state = { repos: [], repo: null, layer: "shared", data: null, tab: "now", q: "", open: new Set(), stamp: "" };
+
+function store(key, val) {
+  try { if (val === undefined) return localStorage.getItem(key); localStorage.setItem(key, val); } catch { return null; }
+}
+
+function esc(s) { return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+
+// Minimal safe markdown: everything is escaped first, then a few constructs are re-introduced.
+function inlineMd(t) {
+  return esc(t)
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[\s(])_([^_]+)_(?=[\s).,;:]|$)/g, "$1<em>$2</em>");
+}
+
+function md(src) {
+  const lines = String(src).replace(/\r\n/g, "\n").split("\n");
+  const out = [];
+  let inCode = false, code = [], list = false;
+  const closeList = () => { if (list) { out.push("</ul>"); list = false; } };
+  for (const line of lines) {
+    if (/^```/.test(line)) {
+      if (inCode) { out.push("<pre><code>" + esc(code.join("\n")) + "</code></pre>"); code = []; inCode = false; }
+      else { closeList(); inCode = true; }
+      continue;
+    }
+    if (inCode) { code.push(line); continue; }
+    const h = line.match(/^(#{1,4})\s+(.*)$/);
+    const li = line.match(/^\s*[-*]\s+(.*)$/);
+    if (h) { closeList(); const n = Math.min(h[1].length + 2, 5); out.push(`<h${n}>${inlineMd(h[2])}</h${n}>`); }
+    else if (li) { if (!list) { out.push("<ul>"); list = true; } out.push(`<li>${inlineMd(li[1])}</li>`); }
+    else if (!line.trim()) closeList();
+    else { closeList(); out.push(`<p>${inlineMd(line)}</p>`); }
+  }
+  if (inCode) out.push("<pre><code>" + esc(code.join("\n")) + "</code></pre>");
+  closeList();
+  return out.join("");
+}
+
+function fmt(ts) { return ts ? ts.replace("T", " ").replace(/:\d\dZ$/, "Z") : "-"; }
+
+async function api(url) {
+  const r = await fetch(url, { cache: "no-store" });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText);
+  return r.json();
+}
+
+let refreshing = false;
+async function refreshAll(reset) {
+  if (refreshing) return;
+  refreshing = true;
+  try { await loadRepos(); await loadData(reset); $("stamp").textContent = "updated " + new Date().toLocaleTimeString(); }
+  catch (e) { $("stamp").textContent = "server unreachable"; }
+  finally { refreshing = false; }
+}
+
+async function loadRepos() {
+  state.repos = await api("/api/repos");
+  const saved = store("pt.repo");
+  if (!state.repo || !state.repos.find((r) => r.path === state.repo)) {
+    state.repo = (state.repos.find((r) => r.path === saved) || state.repos.find((r) => r.exists) || {}).path || null;
+  }
+  renderRepos();
+}
+
+function currentRepo() { return state.repos.find((r) => r.path === state.repo); }
+
+function renderRepos() {
+  const box = $("repos");
+  box.innerHTML = "";
+  state.repos.forEach((r) => {
+    const b = document.createElement("button");
+    b.className = "repo" + (r.exists ? "" : " missing");
+    b.setAttribute("aria-current", String(r.path === state.repo));
+    b.innerHTML = `<span>${esc(r.name)}</span><small>${r.now ? r.now + " now" : ""}</small>`;
+    b.title = r.path;
+    b.onclick = () => { state.repo = r.path; store("pt.repo", r.path); state.open.clear(); state.stamp = ""; renderRepos(); loadData(true); };
+    box.appendChild(b);
+  });
+  $("hint").innerHTML = state.repos.length
+    ? "Add a repo: <code>node scripts/viewer/server.js add &lt;path&gt;</code>"
+    : "No repos registered. Run <code>node scripts/viewer/server.js add &lt;path&gt;</code> and reload.";
+}
+
+async function loadData(reset) {
+  const repo = currentRepo();
+  if (!repo) { $("list").innerHTML = '<div class="empty">Pick a repo.</div>'; $("tabs").innerHTML = ""; return; }
+  const layers = Object.keys(repo.layers).filter((l) => repo.layers[l]);
+  const sel = $("layer");
+  if (!layers.includes(state.layer)) state.layer = layers[0] || "shared";
+  sel.innerHTML = layers.map((l) => `<option value="${l}">${l === "shared" ? "Shared (_architecture)" : "Private (_jookoi-architecture)"}</option>`).join("");
+  sel.value = state.layer;
+  sel.hidden = layers.length < 2;
+  $("repoTitle").innerHTML = `${esc(repo.name)}<span class="path">${esc(repo.path)}</span>`;
+  try {
+    const data = await api(`/api/repo/${repo.index}?layer=${state.layer}`);
+    const stamp = JSON.stringify(data);
+    if (!reset && stamp === state.stamp) return;
+    state.stamp = stamp;
+    state.data = data;
+    render();
+  } catch (e) {
+    state.data = null;
+    $("tabs").innerHTML = "";
+    $("list").innerHTML = `<div class="error">${esc(e.message)}</div>`;
+  }
+}
+
+function groups() {
+  const g = Object.fromEntries(STATUS_ORDER.map((s) => [s, []]));
+  (state.data.items || []).forEach((it) => (it.archived ? g.archived : g[it.status] || g.archived).push(it));
+  g.now.sort((a, b) => a.priority - b.priority);
+  g.parked.sort((a, b) => a.priority - b.priority);
+  g.done.sort((a, b) => (b.ts_done || "").localeCompare(a.ts_done || ""));
+  g.dropped.sort((a, b) => (b.ts_touched || "").localeCompare(a.ts_touched || ""));
+  g.archived.sort((a, b) => (b.ts_done || b.ts_touched || "").localeCompare(a.ts_done || a.ts_touched || ""));
+  return g;
+}
+
+function visible() {
+  const q = state.q.trim().toLowerCase();
+  const g = groups();
+  if (q) return Object.values(g).flat().filter((it) => (it.title + "\n" + it.body).toLowerCase().includes(q));
+  return g[state.tab];
+}
+
+function render() {
+  if (state.data.error) { $("tabs").innerHTML = ""; $("list").innerHTML = `<div class="error">${esc(state.data.error)}</div>`; return; }
+  const g = groups();
+  $("tabs").innerHTML = STATUS_ORDER.map((s) =>
+    `<button class="tab" data-tab="${s}" aria-pressed="${!state.q && s === state.tab}">${s}<span>${g[s].length}</span></button>`).join("");
+  $("tabs").querySelectorAll(".tab").forEach((b) => b.onclick = () => { state.tab = b.dataset.tab; state.q = ""; $("q").value = ""; render(); });
+
+  const items = visible();
+  const prefix = state.data.repo;
+  if (!items.length) { $("list").innerHTML = `<div class="empty">${state.q ? "No matches." : "Nothing here."}</div>`; return; }
+  $("list").innerHTML = '<ul class="items">' + items.map((it) => {
+    const key = (it.archived || "") + it.id;
+    const open = state.open.has(key);
+    return `<li class="item ${it.body ? "has-body" : ""}" data-key="${esc(key)}">
+      <div class="head"><span class="dot ${esc(it.status)}" title="${esc(it.status)}"></span><span class="id">${esc(it.id)}</span>
+      <span class="title">${inlineMd(it.title)}</span><span class="tag">${it.archived ? "archived" : ""}${state.q ? " " + esc(it.status) : ""}</span></div>
+      ${open ? `<div class="body">${it.body ? md(it.body) : ""}
+        <div class="meta"><span>created ${fmt(it.ts_created)}</span><span>started ${fmt(it.ts_started)}</span><span>done ${fmt(it.ts_done)}</span><span>touched ${fmt(it.ts_touched)}</span>
+        <button data-copy="${esc(key)}">Copy ${esc(prefix)}:${esc(it.id)}</button><button data-copymd="${esc(key)}">Copy as markdown</button></div></div>` : ""}
+    </li>`;
+  }).join("") + "</ul>";
+  $("list").querySelectorAll(".item").forEach((li) => {
+    li.querySelector(".head").onclick = () => {
+      const k = li.dataset.key;
+      state.open.has(k) ? state.open.delete(k) : state.open.add(k);
+      render();
+    };
+  });
+  $("list").querySelectorAll("[data-copy]").forEach((b) => b.onclick = (e) => { e.stopPropagation(); copy(`${prefix}:${b.dataset.copy.replace(/^items-\d{4}-\d{2}\.yaml/, "")}`, b); });
+  $("list").querySelectorAll("[data-copymd]").forEach((b) => b.onclick = (e) => {
+    e.stopPropagation();
+    const it = items.find((x) => (x.archived || "") + x.id === b.dataset.copymd);
+    copy(toMarkdown([it]), b);
+  });
+}
+
+function toMarkdown(items) {
+  const prefix = state.data.repo;
+  return items.map((it) => `### ${prefix}:${it.id} ${it.title}\n\nstatus: ${it.status}\n\n${it.body || ""}`.trimEnd()).join("\n\n");
+}
+
+async function copy(text, btn) {
+  try { await navigator.clipboard.writeText(text); const old = btn.textContent; btn.textContent = "Copied"; setTimeout(() => (btn.textContent = old), 1200); }
+  catch { window.prompt("Copy:", text); }
+}
+
+$("q").oninput = (e) => { state.q = e.target.value; if (state.data) render(); };
+$("layer").onchange = (e) => { state.layer = e.target.value; state.open.clear(); loadData(true); };
+$("refresh").onclick = async () => { await refreshAll(true); };
+$("live").checked = store("pt.live") !== "0";
+$("live").onchange = (e) => { store("pt.live", e.target.checked ? "1" : "0"); };
+$("copyAll").onclick = (e) => { if (state.data) copy(toMarkdown(visible()), e.target); };
+$("theme").onclick = () => {
+  const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+  const cur = document.documentElement.dataset.theme || (dark ? "dark" : "light");
+  const next = cur === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  store("pt.theme", next);
+};
+const savedTheme = store("pt.theme");
+if (savedTheme) document.documentElement.dataset.theme = savedTheme;
+
+(async function init() {
+  await refreshAll(true);
+  // The timer exists only while the page is visible and focused. Losing focus or hiding the tab stops it
+  // and no request is made until focus returns, at which point the page refreshes once and restarts it.
+  let timer = null;
+  const focused = () => !document.hidden && document.hasFocus();
+  const stop = () => { if (timer) { clearInterval(timer); timer = null; } };
+  const start = () => {
+    stop();
+    if (focused() && $("live").checked) timer = setInterval(() => refreshAll(false), 4000);
+  };
+  const sync = () => { if (focused()) { if ($("live").checked) refreshAll(false); start(); } else stop(); };
+  window.addEventListener("focus", sync);
+  window.addEventListener("blur", stop);
+  document.addEventListener("visibilitychange", sync);
+  $("live").addEventListener("change", start);
+  start();
+})();
+</script>
+</body>
+</html>

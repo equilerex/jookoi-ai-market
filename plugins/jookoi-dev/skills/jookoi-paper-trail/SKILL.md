@@ -98,5 +98,6 @@ No Node available? `references/pipeline.md` has the manual fallback.
 | Recovering a dead session, handling compaction | `references/pipeline.md` |
 | Finding, removing, staleness, section-surgical edits | `references/operations.md` |
 | Wiring the session-end gate on any harness | `references/hooks.md` |
+| A browsable page over the store, one or many repos | `references/viewer.md` |
 | Creating a file that doesn't exist yet | `assets/templates/<type>.md` |
 | Any mechanical operation | `scripts/jookoi-paper-trail.js` |
