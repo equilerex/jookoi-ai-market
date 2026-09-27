@@ -1,14 +1,13 @@
 #!/usr/bin/env node
 // Interactive setup and sync script.
-// Lets you select which targets (global ~/.agents/skills, ~/.claude/skills, or sibling project repos)
-// will receive copies of all skills in this marketplace.
+// Lets you select which global skill folders receive copies of marketplace skills.
 
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import readline from 'node:readline'
 import { fileURLToPath } from 'node:url'
-import { rootDir, DEFAULT_TARGETS, loadEnv, resolveTarget, syncSkills } from './sync-skills.mjs'
+import { rootDir, loadEnv, syncSkills } from './sync-skills.mjs'
 
 const env = loadEnv()
 const existingConfigTargets = env.SKILL_TARGETS
@@ -53,40 +52,6 @@ function discoverCandidates() {
   // 2. Claude personal skills
   addCandidate('~/.claude/skills', 'Global Claude (~/.claude/skills)', true)
 
-  // 3. Sibling project repositories
-  const parentDir = path.resolve(rootDir, '..')
-  if (fs.existsSync(parentDir)) {
-    const currentName = path.basename(rootDir)
-    const ignoredNames = new Set([currentName, 'backup', 'db bac'])
-    try {
-      const entries = fs.readdirSync(parentDir, { withFileTypes: true })
-      for (const entry of entries) {
-        if (!entry.isDirectory() || ignoredNames.has(entry.name) || entry.name.startsWith('.')) continue
-        const full = path.join(parentDir, entry.name)
-        const isRepo = fs.existsSync(path.join(full, '.git')) ||
-          fs.existsSync(path.join(full, 'package.json')) ||
-          fs.existsSync(path.join(full, 'AGENTS.md'))
-
-        if (isRepo) {
-          const targetRel = path.join('..', entry.name, '.agents', 'skills')
-          addCandidate(targetRel, `Repo: ${entry.name} (.agents/skills)`, false)
-        }
-      }
-    } catch {
-      // Ignore directory read errors
-    }
-  }
-
-  // 4. Any custom paths already in .env not caught above
-  if (existingConfigTargets) {
-    for (const t of existingConfigTargets) {
-      const portable = toPortablePath(t)
-      if (!seenPaths.has(portable)) {
-        addCandidate(t, `Custom: ${portable}`, true)
-      }
-    }
-  }
-
   return candidates
 }
 
@@ -118,8 +83,6 @@ function saveEnvTargets(targets) {
 
 async function runInteractive(candidates) {
   let cursor = 0
-  let isAskingCustom = false
-  const customIndex = candidates.length // virtual item for "Add custom path"
 
   function render() {
     process.stdout.write('\x1b[2J\x1b[0;0H') // Clear screen
@@ -134,12 +97,6 @@ async function runInteractive(candidates) {
       console.log(` ${pointer} ${checkbox} ${label} ${pathHint}`)
     })
 
-    const customPointer = cursor === customIndex ? '\x1b[36m>\x1b[0m' : ' '
-    const customLabel = cursor === customIndex
-      ? '\x1b[36m[+] Add custom repository or folder path...\x1b[0m'
-      : '[+] Add custom repository or folder path...'
-    console.log(` ${customPointer}     ${customLabel}`)
-
     console.log('\n\x1b[90mControls: [↑/↓] Navigate  [Space] Toggle  [a] Toggle all  [Enter] Confirm & Sync  [q] Quit\x1b[0m')
   }
 
@@ -152,8 +109,6 @@ async function runInteractive(candidates) {
 
   return new Promise((resolve) => {
     async function onKeypress(str, key) {
-      if (isAskingCustom) return
-
       if (key.ctrl && key.name === 'c' || key.name === 'q') {
         cleanup()
         console.log('\nAborted.')
@@ -161,46 +116,19 @@ async function runInteractive(candidates) {
       }
 
       if (key.name === 'up' || key.name === 'k') {
-        cursor = (cursor - 1 + (candidates.length + 1)) % (candidates.length + 1)
+        cursor = (cursor - 1 + candidates.length) % candidates.length
         render()
       } else if (key.name === 'down' || key.name === 'j') {
-        cursor = (cursor + 1) % (candidates.length + 1)
+        cursor = (cursor + 1) % candidates.length
         render()
       } else if (key.name === 'space') {
-        if (cursor < candidates.length) {
-          candidates[cursor].checked = !candidates[cursor].checked
-        }
+        candidates[cursor].checked = !candidates[cursor].checked
         render()
       } else if (str === 'a' || str === 'A') {
         const anyUnchecked = candidates.some((c) => !c.checked)
         candidates.forEach((c) => { c.checked = anyUnchecked })
         render()
       } else if (key.name === 'return' || key.name === 'enter') {
-        if (cursor === customIndex) {
-          // Add custom path
-          isAskingCustom = true
-          if (process.stdin.isTTY) process.stdin.setRawMode(false)
-          const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
-          rl.question('\nEnter custom repository or folder path: ', (ans) => {
-            rl.close()
-            if (process.stdin.isTTY) process.stdin.setRawMode(true)
-            isAskingCustom = false
-            const trimmed = ans.trim()
-            if (trimmed) {
-              const portable = toPortablePath(trimmed)
-              candidates.push({
-                label: `Custom: ${portable}`,
-                rawPath: trimmed,
-                portable,
-                checked: true
-              })
-              cursor = candidates.length - 1
-            }
-            render()
-          })
-          return
-        }
-
         cleanup()
         resolve(candidates.filter((c) => c.checked))
       }

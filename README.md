@@ -77,6 +77,10 @@ gemini skills install https://github.com/equilerex/jookoi-ai-market --path plugi
 
 `SKILL.md` (name, description, body) is an open cross-tool standard, not Claude-specific. Copy whichever folder you want from `plugins/jookoi-dev/skills/` into wherever that harness reads local skills from. No generated repo-root `.agents/skills/`: it would shadow a same-named skill in the user's own global skills directory for any tool that discovers skills workspace-first.
 
+**Local global skill copies:**
+
+`npm start` selects the global `~/.agents/skills` and `~/.claude/skills` targets. `npm run sync` refreshes those copies from this checkout. Project skill folders are rejected by the sync script; install a project-specific skill deliberately in that project's own `.agents/skills/` instead.
+
 ## Relationship to the baseline
 
 - `JooKoi-developer-stack` works standalone, with no knowledge this repo exists.

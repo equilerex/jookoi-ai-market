@@ -66,6 +66,15 @@ export function findSkills() {
 
 export function syncSkills({ targets, force = false, dryRun = false }) {
   const resolvedTargets = targets.map((t) => typeof t === 'string' ? resolveTarget(t) : t)
+  const allowedTargets = new Set([
+    path.join(os.homedir(), '.agents', 'skills'),
+    path.join(os.homedir(), '.claude', 'skills'),
+  ].map((target) => path.resolve(target).toLowerCase()))
+  for (const target of resolvedTargets) {
+    if (!allowedTargets.has(path.resolve(target).toLowerCase())) {
+      throw new Error(`Only global skill targets are supported: ${target}`)
+    }
+  }
   const skills = findSkills()
   const counts = { copied: 0, same: 0, skipped: 0 }
 

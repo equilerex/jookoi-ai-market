@@ -27,6 +27,8 @@ The server only reads the architecture folders of registered repos and rejects r
 
 - The sidebar picks the repo. Each repo shows its `now` count. A repo whose folder is gone is greyed out.
 - A layer switch appears for repos that have both `_architecture/` and `_jookoi-architecture/`.
-- Tabs: `now`, `parked`, `done`, `dropped`, `archived`, with counts. Search covers title and body across every status.
+- Chips: `all`, `now`, `parked`, `done`, `dropped`, `archived`, with counts. Search matches ID, title and body within the active chip; `status:done` and `is:archived` tokens replace the chip. Sort: newest (default), oldest, priority. Keys: `/` search, `j`/`k` move, `Enter` toggle, `Esc` close. `#repo/id` deep-links to an item.
+- `+ Add item` (or `n`) adds an item to the focused repo and layer: Immediate to-do (status `now`) or Backlog (status `parked`). The server shells out to `jookoi-paper-trail add`, so validation and ID generation are the CLI's. `POST /api/repo/:i/items` needs a JSON content type and a same-origin `Origin`.
+- Bodies render as GFM through the vendored `jookoi-universal-mdx-render` build, HTML off.
 - Click an item for its body and timestamps. `Copy stack:k4f9` copies the repo-prefixed ID. `Copy as markdown` copies one item, or the visible list from the top bar, for pasting into an LLM.
 - Live: with the Live box checked the page re-reads every 4 seconds, but only while the tab is visible and the window has focus. The timer stops on blur or when the tab is hidden, and one refresh runs when focus returns. Changes made through the script appear without a reload. `Refresh` re-reads on demand, and the page shows when it last did.

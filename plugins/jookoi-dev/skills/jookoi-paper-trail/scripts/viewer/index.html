@@ -45,6 +45,12 @@
   input[type=search] { flex: 1 1 200px; min-width: 0; }
   button.ctl { cursor: pointer; }
   button.ctl:hover { border-color: var(--accent); }
+  .addform { display: grid; gap: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-bottom: 14px; }
+  .addform[hidden] { display: none; }
+  .addform input, .addform textarea { background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; font: inherit; width: 100%; }
+  .addform textarea { resize: vertical; }
+  .addform .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .addform .row .stamp:first-of-type { margin-right: auto; }
   .stamp { color: var(--muted); font-size: 12px; }
   .live { display: flex; gap: 5px; align-items: center; font-size: 14px; color: var(--muted); cursor: pointer; }
   .tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
@@ -52,7 +58,13 @@
   .tab[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
   .tab span { opacity: .7; margin-left: 4px; }
   ul.items { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-  .item { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+  .item { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; content-visibility: auto; contain-intrinsic-size: auto 44px; }
+  .item.focused { outline: 2px solid var(--accent); outline-offset: -1px; }
+  li.group { color: var(--muted); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; font-weight: 600; margin: 10px 2px 0; }
+  li.group:first-child { margin-top: 0; }
+  mark { background: color-mix(in srgb, var(--parked) 45%, transparent); color: inherit; border-radius: 2px; }
+  .when { font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--muted); flex: none; white-space: nowrap; min-width: 15ch; }
+  .title code { background: var(--code); padding: 0 4px; border-radius: 4px; font-size: .92em; }
   .head { display: flex; gap: 10px; align-items: baseline; padding: 10px 12px; cursor: pointer; }
   .item:not(.has-body) .head { cursor: default; }
   .id { font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--muted); background: var(--code); padding: 1px 6px; border-radius: 5px; flex: none; }
@@ -61,12 +73,19 @@
   .dot.now { background: var(--now); } .dot.parked { background: var(--parked); } .dot.done { background: var(--done); } .dot.dropped { background: var(--dropped); }
   .tag { font-size: 12px; color: var(--muted); flex: none; }
   .body { border-top: 1px solid var(--line); padding: 10px 14px 14px; overflow-wrap: anywhere; }
-  .body h3, .body h4, .body h5 { margin: 12px 0 4px; }
-  .body p { margin: 6px 0; }
-  .body ul { margin: 6px 0; padding-left: 22px; }
-  .body pre { background: var(--code); padding: 10px; border-radius: 8px; overflow: auto; font-size: 13px; }
-  .body code { background: var(--code); padding: 1px 5px; border-radius: 4px; font-size: 13px; }
-  .body pre code { background: none; padding: 0; }
+  .body .jookoi-mdx-renderer {
+    font: inherit; line-height: 1.55; color: var(--ink);
+    --jookoi-document-text: var(--ink); --jookoi-document-link: var(--accent); --jookoi-document-muted: var(--muted);
+    --jookoi-document-quote: var(--line); --jookoi-document-border: var(--line); --jookoi-document-head: var(--code);
+    --jookoi-document-code-inline: var(--code); --jookoi-document-code-text: var(--ink); --jookoi-document-code-block: var(--code);
+  }
+  .body .jookoi-mdx-renderer :is(h1, h2, h3, h4, h5, h6) { font-size: 1em; font-weight: 600; margin: 12px 0 4px; }
+  .body .jookoi-mdx-renderer :is(p, ul, ol, pre, blockquote, table) { margin: 6px 0; }
+  .body .jookoi-mdx-renderer :is(ul, ol) { padding-left: 22px; }
+  .body .jookoi-mdx-renderer li { margin-bottom: 2px; }
+  .body .jookoi-mdx-renderer pre { padding: 10px; font-size: 13px; }
+  .body .jookoi-mdx-renderer :not(pre) > code { font-weight: 400; font-size: 13px; }
+  .body pre.plain { background: var(--code); padding: 10px; border-radius: 8px; overflow: auto; white-space: pre-wrap; font-size: 13px; }
   .meta { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--muted); font-size: 12px; margin-top: 10px; align-items: center; }
   .meta button { border: 1px solid var(--line); background: none; color: var(--ink); border-radius: 6px; padding: 2px 8px; cursor: pointer; font: inherit; font-size: 12px; }
   .empty, .error { color: var(--muted); padding: 30px 8px; text-align: center; }
@@ -90,68 +109,109 @@
     <div class="bar">
       <h2 id="repoTitle">Paper Trail</h2>
       <select id="layer" aria-label="Layer"></select>
-      <input id="q" type="search" placeholder="Search title and body" aria-label="Search">
+      <input id="q" type="search" placeholder="Search id, title, body  ( / )  status:done  is:archived" aria-label="Search">
+      <select id="sort" aria-label="Sort"><option value="newest">Newest</option><option value="oldest">Oldest</option><option value="priority">Priority</option></select>
       <span class="stamp" id="stamp" aria-live="polite"></span>
       <button class="ctl" id="refresh" title="Re-read the YAML files now">Refresh</button>
       <label class="live" title="Re-read every 4 seconds while this tab is visible"><input type="checkbox" id="live" checked> Live</label>
+      <button class="ctl" id="addBtn" title="Add an item to this repo (n)">+ Add item</button>
       <button class="ctl" id="copyAll" title="Copy the visible items as markdown">Copy as markdown</button>
       <button class="ctl" id="theme" title="Toggle theme">Theme</button>
     </div>
+    <form class="addform" id="addForm" hidden>
+      <input id="addTitle" type="text" placeholder="Title (one line)" aria-label="Title" required>
+      <textarea id="addBody" rows="4" placeholder="Body (markdown, optional)" aria-label="Body"></textarea>
+      <div class="row">
+        <select id="addKind" aria-label="Kind">
+          <option value="immediate">Immediate to-do (now)</option>
+          <option value="backlog">Backlog (parked)</option>
+        </select>
+        <span class="stamp" id="addTarget"></span>
+        <span class="stamp" id="addMsg" aria-live="polite"></span>
+        <button class="ctl" type="submit" id="addSubmit">Add</button>
+        <button class="ctl" type="button" id="addCancel">Cancel</button>
+      </div>
+    </form>
     <div class="tabs" id="tabs" role="group" aria-label="Status"></div>
-    <div id="list"></div>
+    <ul class="items" id="list"></ul>
   </main>
 </div>
 
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
-const STATUS_ORDER = ["now", "parked", "done", "dropped", "archived"];
-const state = { repos: [], repo: null, layer: "shared", data: null, tab: "now", q: "", open: new Set(), stamp: "" };
+const CHIPS = ["all", "now", "parked", "done", "dropped", "archived"];
+const STATUSES = ["now", "parked", "done", "dropped"];
+const state = {
+  repos: [], repos_stamp: "", repo: null, layer: "shared", data: null, etag: "",
+  tab: "now", q: "", sort: "newest", open: new Set(), cursor: null, pendingLink: null,
+};
+const rows = new Map();   // item key -> <li>, reused across renders so refreshes patch instead of rebuild
+const bodyCache = new Map();
+let mdRender = null;      // renderMdx from the vendored bundle, or null until it loads (or if it fails)
 
 function store(key, val) {
   try { if (val === undefined) return localStorage.getItem(key); localStorage.setItem(key, val); } catch { return null; }
 }
 
 function esc(s) { return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+const reEsc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-// Minimal safe markdown: everything is escaped first, then a few constructs are re-introduced.
-function inlineMd(t) {
-  return esc(t)
-    .replace(/`([^`]+)`/g, "<code>$1</code>")
-    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-    .replace(/(^|[\s(])_([^_]+)_(?=[\s).,;:]|$)/g, "$1<em>$2</em>");
-}
+// ---------------------------------------------------------------- markdown (vendored jookoi-universal-mdx-render, HTML off)
 
-function md(src) {
-  const lines = String(src).replace(/\r\n/g, "\n").split("\n");
-  const out = [];
-  let inCode = false, code = [], list = false;
-  const closeList = () => { if (list) { out.push("</ul>"); list = false; } };
-  for (const line of lines) {
-    if (/^```/.test(line)) {
-      if (inCode) { out.push("<pre><code>" + esc(code.join("\n")) + "</code></pre>"); code = []; inCode = false; }
-      else { closeList(); inCode = true; }
-      continue;
-    }
-    if (inCode) { code.push(line); continue; }
-    const h = line.match(/^(#{1,4})\s+(.*)$/);
-    const li = line.match(/^\s*[-*]\s+(.*)$/);
-    if (h) { closeList(); const n = Math.min(h[1].length + 2, 5); out.push(`<h${n}>${inlineMd(h[2])}</h${n}>`); }
-    else if (li) { if (!list) { out.push("<ul>"); list = true; } out.push(`<li>${inlineMd(li[1])}</li>`); }
-    else if (!line.trim()) closeList();
-    else { closeList(); out.push(`<p>${inlineMd(line)}</p>`); }
+(async function loadRenderer() {
+  try {
+    const mod = await import("/vendor/jookoi-mdx-render.browser.js");
+    const style = document.createElement("style");
+    style.textContent = mod.documentStyles;
+    document.head.append(style);
+    mdRender = (src) => mod.renderMdx(src, { mdx: false, allowHtml: false, headingIds: false }).then((r) => r.html);
+    for (const li of rows.values()) if (li._open) fillBody(li);
+  } catch { /* bodies stay plain text */ }
+})();
+
+// Fills an open row's body. Plain text until the renderer has loaded, then rendered markdown (cached per body).
+async function fillBody(li) {
+  const box = li.querySelector(".md");
+  if (!box) return;
+  const src = li._item.body;
+  if (!src) { box.innerHTML = ""; return; }
+  const plain = `<pre class="plain">${esc(src)}</pre>`;
+  if (!mdRender) { box.classList.remove("jookoi-mdx-renderer"); box.innerHTML = plain; return; }
+  const ck = li._key + "\n" + src;
+  let html = bodyCache.get(ck);
+  if (html === undefined) {
+    try { html = await mdRender(src); bodyCache.set(ck, html); } catch { html = null; }
   }
-  if (inCode) out.push("<pre><code>" + esc(code.join("\n")) + "</code></pre>");
-  closeList();
-  return out.join("");
+  if (li.querySelector(".md") !== box || li._item.body !== src) return;   // row changed while rendering
+  box.classList.toggle("jookoi-mdx-renderer", html !== null);
+  box.innerHTML = html === null ? plain : html;
 }
+
+// ---------------------------------------------------------------- dates
 
 function fmt(ts) { return ts ? ts.replace("T", " ").replace(/:\d\dZ$/, "Z") : "-"; }
 
-async function api(url) {
-  const r = await fetch(url, { cache: "no-store" });
+function dayDiff(ts) {
+  if (!ts) return null;
+  const d = new Date(ts.length <= 10 ? ts + "T00:00:00" : ts);
+  if (isNaN(d)) return null;
+  const t = new Date(); t.setHours(0, 0, 0, 0); d.setHours(0, 0, 0, 0);
+  return Math.round((t - d) / 864e5);
+}
+function groupOf(ts) {
+  const n = dayDiff(ts);
+  return n === null ? "Undated" : n <= 0 ? "Today" : n < 7 ? "This week" : "Earlier";
+}
+
+// ---------------------------------------------------------------- data
+
+// Conditional GET: with a known ETag an unchanged store answers 304 and the result is { unchanged: true }.
+async function api(url, etag) {
+  const r = await fetch(url, { cache: "no-store", headers: etag ? { "If-None-Match": etag } : {} });
+  if (r.status === 304) return { unchanged: true };
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText);
-  return r.json();
+  return { json: await r.json(), etag: r.headers.get("ETag") || "" };
 }
 
 let refreshing = false;
@@ -164,15 +224,27 @@ async function refreshAll(reset) {
 }
 
 async function loadRepos() {
-  state.repos = await api("/api/repos");
+  const { json } = await api("/api/repos");
+  const stamp = JSON.stringify(json);
+  state.repos = json;
+  const link = state.pendingLink;
+  const linked = link && json.find((r) => r.name.toLowerCase() === link.repo.toLowerCase());
+  if (linked) { state.repo = linked.path; store("pt.repo", linked.path); }
   const saved = store("pt.repo");
   if (!state.repo || !state.repos.find((r) => r.path === state.repo)) {
     state.repo = (state.repos.find((r) => r.path === saved) || state.repos.find((r) => r.exists) || {}).path || null;
   }
-  renderRepos();
+  if (stamp !== state.repos_stamp || linked) { state.repos_stamp = stamp; renderRepos(); }
 }
 
 function currentRepo() { return state.repos.find((r) => r.path === state.repo); }
+
+function switchRepo(path) {
+  state.repo = path; store("pt.repo", path);
+  state.open.clear(); state.cursor = null; state.etag = ""; state.repos_stamp = "";
+  bodyCache.clear(); resetRows();
+  renderRepos(); loadData(true);
+}
 
 function renderRepos() {
   const box = $("repos");
@@ -183,7 +255,7 @@ function renderRepos() {
     b.setAttribute("aria-current", String(r.path === state.repo));
     b.innerHTML = `<span>${esc(r.name)}</span><small>${r.now ? r.now + " now" : ""}</small>`;
     b.title = r.path;
-    b.onclick = () => { state.repo = r.path; store("pt.repo", r.path); state.open.clear(); state.stamp = ""; renderRepos(); loadData(true); };
+    b.onclick = () => switchRepo(r.path);
     box.appendChild(b);
   });
   $("hint").innerHTML = state.repos.length
@@ -191,9 +263,13 @@ function renderRepos() {
     : "No repos registered. Run <code>node scripts/viewer/server.js add &lt;path&gt;</code> and reload.";
 }
 
+function resetRows() { rows.clear(); $("list").innerHTML = ""; $("list")._items = []; }
+
+function showMessage(cls, text) { resetRows(); $("list").innerHTML = `<li class="${cls}">${esc(text)}</li>`; }
+
 async function loadData(reset) {
   const repo = currentRepo();
-  if (!repo) { $("list").innerHTML = '<div class="empty">Pick a repo.</div>'; $("tabs").innerHTML = ""; return; }
+  if (!repo) { showMessage("empty", "Pick a repo."); $("tabs").innerHTML = ""; return; }
   const layers = Object.keys(repo.layers).filter((l) => repo.layers[l]);
   const sel = $("layer");
   if (!layers.includes(state.layer)) state.layer = layers[0] || "shared";
@@ -202,72 +278,249 @@ async function loadData(reset) {
   sel.hidden = layers.length < 2;
   $("repoTitle").innerHTML = `${esc(repo.name)}<span class="path">${esc(repo.path)}</span>`;
   try {
-    const data = await api(`/api/repo/${repo.index}?layer=${state.layer}`);
-    const stamp = JSON.stringify(data);
-    if (!reset && stamp === state.stamp) return;
-    state.stamp = stamp;
-    state.data = data;
+    const res = await api(`/api/repo/${repo.index}?layer=${state.layer}`, reset ? "" : state.etag);
+    if (res.unchanged && !state.pendingLink) return;
+    if (!res.unchanged) { state.etag = res.etag; state.data = prepare(res.json); }
     render();
+    applyLink();
   } catch (e) {
-    state.data = null;
+    state.data = null; state.etag = "";
     $("tabs").innerHTML = "";
-    $("list").innerHTML = `<div class="error">${esc(e.message)}</div>`;
+    showMessage("error", e.message);
   }
 }
 
-function groups() {
-  const g = Object.fromEntries(STATUS_ORDER.map((s) => [s, []]));
-  (state.data.items || []).forEach((it) => (it.archived ? g.archived : g[it.status] || g.archived).push(it));
-  g.now.sort((a, b) => a.priority - b.priority);
-  g.parked.sort((a, b) => a.priority - b.priority);
-  g.done.sort((a, b) => (b.ts_done || "").localeCompare(a.ts_done || ""));
-  g.dropped.sort((a, b) => (b.ts_touched || "").localeCompare(a.ts_touched || ""));
-  g.archived.sort((a, b) => (b.ts_done || b.ts_touched || "").localeCompare(a.ts_done || a.ts_touched || ""));
-  return g;
+// Adds derived fields once per load: stable key, date sort key, lowercase search haystack.
+function prepare(data) {
+  (data.items || []).forEach((it) => {
+    it._key = (it.archived || "") + it.id;
+    it._date = it.ts_touched || it.ts_done || it.ts_created || "";
+    it._hay = (it.id + "\n" + it.title + "\n" + it.body).toLowerCase();
+  });
+  return data;
 }
 
+// ---------------------------------------------------------------- filter and sort
+
+function parseQuery(q) {
+  const out = { status: null, archived: false, terms: [] };
+  q.trim().toLowerCase().split(/\s+/).filter(Boolean).forEach((tok) => {
+    const m = tok.match(/^status:(\w+)$/);
+    if (m && STATUSES.includes(m[1])) out.status = m[1];
+    else if (tok === "is:archived") out.archived = true;
+    else out.terms.push(tok);
+  });
+  return out;
+}
+
+function chipOf(it) { return it.archived ? "archived" : it.status; }
+
+function counts() {
+  const c = Object.fromEntries(CHIPS.map((s) => [s, 0]));
+  (state.data.items || []).forEach((it) => { c.all++; c[chipOf(it)] = (c[chipOf(it)] || 0) + 1; });
+  return c;
+}
+
+const idCmp = (a, b) => a.id.localeCompare(b.id, undefined, { numeric: true });
+function newestCmp(a, b) { return a._date < b._date ? 1 : a._date > b._date ? -1 : idCmp(b, a); }
+const SORTS = {
+  newest: newestCmp,
+  oldest: (a, b) => -newestCmp(a, b),
+  priority: (a, b) => ((a.priority ?? 1e9) - (b.priority ?? 1e9)) || newestCmp(a, b),
+};
+
+// A status: or is:archived token replaces the active chip; plain terms always narrow within it.
 function visible() {
-  const q = state.q.trim().toLowerCase();
-  const g = groups();
-  if (q) return Object.values(g).flat().filter((it) => (it.title + "\n" + it.body).toLowerCase().includes(q));
-  return g[state.tab];
+  const pq = parseQuery(state.q);
+  const overrides = !!(pq.status || pq.archived);
+  const items = (state.data.items || []).filter((it) => {
+    if (pq.archived) { if (!it.archived) return false; }
+    else if (pq.status) { if (it.archived || it.status !== pq.status) return false; }
+    else if (state.tab !== "all" && chipOf(it) !== state.tab) return false;
+    return pq.terms.every((t) => it._hay.includes(t));
+  });
+  items.sort(SORTS[state.sort]);
+  return { items, terms: pq.terms, overrides };
+}
+
+// ---------------------------------------------------------------- rendering
+
+function titleHtml(title, terms) {
+  const re = terms.length ? new RegExp("(" + terms.map(reEsc).join("|") + ")", "gi") : null;
+  const hl = (t) => (re ? t.split(re).map((p, i) => (i % 2 ? `<mark>${esc(p)}</mark>` : esc(p))).join("") : esc(t));
+  return String(title).split(/(`[^`]+`)/).map((seg, i) => (i % 2 ? `<code>${hl(seg.slice(1, -1))}</code>` : hl(seg))).join("");
+}
+
+function headHtml(it, ctx) {
+  const tag = [ctx.showStatus ? it.status : "", it.archived ? "archived" : ""].filter(Boolean).join(" · ");
+  return (ctx.dated ? `<span class="when">${esc(it._date ? fmt(it._date) : "-")}</span>` : "") +
+    `<span class="dot ${esc(it.status)}" title="${esc(it.status)}"></span><span class="id">${esc(it.id)}</span>` +
+    `<span class="title">${titleHtml(it.title, ctx.terms)}</span><span class="tag">${esc(tag)}</span>`;
+}
+
+function bodyHtml(it) {
+  return `<div class="md"></div><div class="meta"><span>created ${fmt(it.ts_created)}</span><span>started ${fmt(it.ts_started)}</span>` +
+    `<span>done ${fmt(it.ts_done)}</span><span>touched ${fmt(it.ts_touched)}</span>` +
+    `<button data-copy>Copy ${esc(state.data.repo)}:${esc(it.id)}</button><button data-copymd>Copy as markdown</button></div>`;
+}
+
+function makeRow(it) {
+  const li = document.createElement("li");
+  li.className = "item";
+  li.innerHTML = '<div class="head"></div>';
+  li._key = it._key;
+  li.querySelector(".head").onclick = () => { setCursor(li._key, false); toggle(li._key); };
+  li.addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    if (b.hasAttribute("data-copy")) copy(`${state.data.repo}:${li._item.id}`, b);
+    if (b.hasAttribute("data-copymd")) copy(toMarkdown([li._item]), b);
+  });
+  return li;
+}
+
+// Brings one row in line with its item, touching the DOM only where something changed.
+function syncRow(li, it, ctx) {
+  const open = state.open.has(it._key);
+  const sig = JSON.stringify([it.title, it.status, it.body, it.ts_created, it.ts_started, it.ts_done, it.ts_touched, it.archived,
+    ctx.terms, ctx.showStatus, ctx.dated, it._date]);
+  const changed = li._sig !== sig;
+  li._item = it;
+  if (changed) {
+    li._sig = sig;
+    li.querySelector(".head").innerHTML = headHtml(it, ctx);
+    li.classList.toggle("has-body", !!it.body);
+  }
+  li.querySelector(".head").setAttribute("aria-expanded", String(open));
+  if (open && (!li._open || changed)) {
+    // The body carries timestamps and the rendered markdown, so a changed open row gets a fresh body.
+    li.querySelector(".body")?.remove();
+    const body = document.createElement("div");
+    body.className = "body";
+    body.innerHTML = bodyHtml(it);
+    li.append(body);
+    li._open = true;
+    fillBody(li);
+  } else if (!open && li._open) {
+    li.querySelector(".body")?.remove();
+    li._open = false;
+  }
+  li.classList.toggle("focused", state.cursor === it._key);
 }
 
 function render() {
-  if (state.data.error) { $("tabs").innerHTML = ""; $("list").innerHTML = `<div class="error">${esc(state.data.error)}</div>`; return; }
-  const g = groups();
-  $("tabs").innerHTML = STATUS_ORDER.map((s) =>
-    `<button class="tab" data-tab="${s}" aria-pressed="${!state.q && s === state.tab}">${s}<span>${g[s].length}</span></button>`).join("");
-  $("tabs").querySelectorAll(".tab").forEach((b) => b.onclick = () => { state.tab = b.dataset.tab; state.q = ""; $("q").value = ""; render(); });
+  if (!state.data) return;
+  if (state.data.error) { $("tabs").innerHTML = ""; showMessage("error", state.data.error); return; }
+  const { items, terms, overrides } = visible();
+  const c = counts();
+  const tabs = $("tabs");
+  if (!tabs.children.length) {
+    tabs.innerHTML = CHIPS.map((s) => `<button class="tab" data-tab="${s}"></button>`).join("");
+    tabs.querySelectorAll(".tab").forEach((b) => b.onclick = () => { state.tab = b.dataset.tab; store("pt.tab", state.tab); render(); });
+  }
+  tabs.querySelectorAll(".tab").forEach((b) => {
+    const s = b.dataset.tab;
+    b.setAttribute("aria-pressed", String(!overrides && s === state.tab));
+    b.innerHTML = `${s}<span>${c[s] || 0}</span>`;
+  });
 
-  const items = visible();
-  const prefix = state.data.repo;
-  if (!items.length) { $("list").innerHTML = `<div class="empty">${state.q ? "No matches." : "Nothing here."}</div>`; return; }
-  $("list").innerHTML = '<ul class="items">' + items.map((it) => {
-    const key = (it.archived || "") + it.id;
-    const open = state.open.has(key);
-    return `<li class="item ${it.body ? "has-body" : ""}" data-key="${esc(key)}">
-      <div class="head"><span class="dot ${esc(it.status)}" title="${esc(it.status)}"></span><span class="id">${esc(it.id)}</span>
-      <span class="title">${inlineMd(it.title)}</span><span class="tag">${it.archived ? "archived" : ""}${state.q ? " " + esc(it.status) : ""}</span></div>
-      ${open ? `<div class="body">${it.body ? md(it.body) : ""}
-        <div class="meta"><span>created ${fmt(it.ts_created)}</span><span>started ${fmt(it.ts_started)}</span><span>done ${fmt(it.ts_done)}</span><span>touched ${fmt(it.ts_touched)}</span>
-        <button data-copy="${esc(key)}">Copy ${esc(prefix)}:${esc(it.id)}</button><button data-copymd="${esc(key)}">Copy as markdown</button></div></div>` : ""}
-    </li>`;
-  }).join("") + "</ul>";
-  $("list").querySelectorAll(".item").forEach((li) => {
-    li.querySelector(".head").onclick = () => {
-      const k = li.dataset.key;
-      state.open.has(k) ? state.open.delete(k) : state.open.add(k);
-      render();
-    };
+  const list = $("list");
+  const dated = state.sort !== "priority";
+  const ctx = { terms, dated, showStatus: state.tab === "all" || overrides || !!state.q };
+  const nodes = [];
+  const seen = new Set();
+  let lastGroup = null;
+  items.forEach((it) => {
+    if (dated) {
+      const g = groupOf(it._date);
+      if (g !== lastGroup) { lastGroup = g; const h = document.createElement("li"); h.className = "group"; h.textContent = g; nodes.push(h); }
+    }
+    let li = rows.get(it._key);
+    if (!li) { li = makeRow(it); rows.set(it._key, li); }
+    syncRow(li, it, ctx);
+    seen.add(it._key);
+    nodes.push(li);
   });
-  $("list").querySelectorAll("[data-copy]").forEach((b) => b.onclick = (e) => { e.stopPropagation(); copy(`${prefix}:${b.dataset.copy.replace(/^items-\d{4}-\d{2}\.yaml/, "")}`, b); });
-  $("list").querySelectorAll("[data-copymd]").forEach((b) => b.onclick = (e) => {
-    e.stopPropagation();
-    const it = items.find((x) => (x.archived || "") + x.id === b.dataset.copymd);
-    copy(toMarkdown([it]), b);
-  });
+  for (const k of [...rows.keys()]) if (!seen.has(k)) rows.delete(k);
+  list._items = items;
+  if (!nodes.length) { const q = state.q; showMessage("empty", q ? "No matches." : "Nothing here."); list._items = []; return; }
+
+  list.querySelectorAll(":scope > .empty, :scope > .error").forEach((n) => n.remove());
+  nodes.forEach((n, i) => { if (list.children[i] !== n) list.insertBefore(n, list.children[i] || null); });
+  while (list.children.length > nodes.length) list.lastElementChild.remove();
 }
+
+// ---------------------------------------------------------------- open state, cursor, deep links
+
+function findItem(key) { return (state.data.items || []).find((x) => x._key === key); }
+
+function toggle(key, force) {
+  const on = force === undefined ? !state.open.has(key) : force;
+  on ? state.open.add(key) : state.open.delete(key);
+  const it = findItem(key);
+  if (it) {
+    const hash = "#" + encodeURIComponent(currentRepo().name) + "/" + encodeURIComponent(it.id);
+    if (on) history.replaceState(null, "", hash);
+    else if (location.hash === hash) history.replaceState(null, "", location.pathname + location.search);
+  }
+  render();
+}
+
+function setCursor(key, scroll) {
+  state.cursor = key;
+  rows.forEach((li, k) => li.classList.toggle("focused", k === key));
+  if (scroll && rows.get(key)) rows.get(key).scrollIntoView({ block: "nearest" });
+}
+
+function parseHash() {
+  const m = location.hash.match(/^#([^/]+)\/(.+)$/);
+  return m ? { repo: decodeURIComponent(m[1]), id: decodeURIComponent(m[2]) } : null;
+}
+
+// Opens and scrolls to the item named in the URL hash. Switches to the All chip when the item is filtered out.
+function applyLink() {
+  const link = state.pendingLink;
+  if (!link || !state.data) return;
+  state.pendingLink = null;
+  const cands = (state.data.items || []).filter((x) => x.id === link.id);
+  const it = cands.find((x) => !x.archived) || cands[0];
+  if (!it) return;
+  if (!visible().items.includes(it)) { state.tab = "all"; state.q = ""; $("q").value = ""; }
+  state.open.add(it._key);
+  state.cursor = it._key;
+  render();
+  rows.get(it._key)?.scrollIntoView({ block: "center" });
+}
+
+window.addEventListener("hashchange", () => {
+  const link = parseHash();
+  if (!link) return;
+  state.pendingLink = link;
+  const hit = state.repos.find((r) => r.name.toLowerCase() === link.repo.toLowerCase());
+  if (hit && hit.path !== state.repo) switchRepo(hit.path); else applyLink();
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.ctrlKey || e.metaKey || e.altKey || !state.data) return;
+  const inField = /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName);
+  if (e.key === "Escape") {
+    if (e.target === $("q")) { if ($("q").value) { $("q").value = ""; state.q = ""; render(); } else $("q").blur(); }
+    else if (state.cursor && state.open.has(state.cursor)) toggle(state.cursor, false);
+    return;
+  }
+  if (inField || e.target.tagName === "BUTTON") return;
+  if (e.key === "n") { e.preventDefault(); openAdd(true); return; }
+  if (e.key === "/") { e.preventDefault(); $("q").focus(); $("q").select(); return; }
+  const list = $("list")._items || [];
+  if (!list.length) return;
+  const i = list.findIndex((x) => x._key === state.cursor);
+  if (e.key === "j" || e.key === "k") {
+    const next = list[Math.max(0, Math.min(list.length - 1, i === -1 ? 0 : i + (e.key === "j" ? 1 : -1)))];
+    setCursor(next._key, true);
+  } else if (e.key === "Enter" && i !== -1) { e.preventDefault(); toggle(state.cursor); }
+});
+
+// ---------------------------------------------------------------- misc
 
 function toMarkdown(items) {
   const prefix = state.data.repo;
@@ -279,12 +532,57 @@ async function copy(text, btn) {
   catch { window.prompt("Copy:", text); }
 }
 
+// ---------------------------------------------------------------- add item
+
+function openAdd(show) {
+  const form = $("addForm");
+  form.hidden = !show;
+  if (!show) return;
+  const repo = currentRepo();
+  $("addTarget").textContent = repo ? `-> ${repo.name} (${state.layer})` : "";
+  $("addMsg").textContent = "";
+  $("addTitle").focus();
+}
+
+$("addBtn").onclick = () => openAdd($("addForm").hidden);
+$("addCancel").onclick = () => openAdd(false);
+$("addForm").addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { e.stopPropagation(); openAdd(false); }
+  else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $("addForm").requestSubmit(); }
+});
+$("addForm").onsubmit = async (e) => {
+  e.preventDefault();
+  const repo = currentRepo();
+  if (!repo) return;
+  const kind = $("addKind").value;
+  $("addSubmit").disabled = true;
+  $("addMsg").textContent = "adding...";
+  try {
+    const r = await fetch(`/api/repo/${repo.index}/items`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ layer: state.layer, kind, title: $("addTitle").value, body: $("addBody").value }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || r.statusText);
+    $("addTitle").value = ""; $("addBody").value = "";
+    $("addMsg").textContent = j.message || "added";
+    state.tab = kind === "immediate" ? "now" : "parked"; state.q = ""; $("q").value = "";
+    store("pt.tab", state.tab);
+    state.etag = "";
+    await refreshAll(true);
+    $("addTitle").focus();
+  } catch (err) {
+    $("addMsg").textContent = "failed: " + err.message;
+  } finally { $("addSubmit").disabled = false; }
+};
+
 $("q").oninput = (e) => { state.q = e.target.value; if (state.data) render(); };
-$("layer").onchange = (e) => { state.layer = e.target.value; state.open.clear(); loadData(true); };
-$("refresh").onclick = async () => { await refreshAll(true); };
+$("sort").onchange = (e) => { state.sort = e.target.value; store("pt.sort", state.sort); if (state.data) render(); };
+$("layer").onchange = (e) => { state.layer = e.target.value; state.open.clear(); state.cursor = null; state.etag = ""; resetRows(); loadData(true); };
+$("refresh").onclick = async () => { state.etag = ""; await refreshAll(true); };
 $("live").checked = store("pt.live") !== "0";
 $("live").onchange = (e) => { store("pt.live", e.target.checked ? "1" : "0"); };
-$("copyAll").onclick = (e) => { if (state.data) copy(toMarkdown(visible()), e.target); };
+$("copyAll").onclick = (e) => { if (state.data) copy(toMarkdown(visible().items), e.target); };
 $("theme").onclick = () => {
   const dark = matchMedia("(prefers-color-scheme: dark)").matches;
   const cur = document.documentElement.dataset.theme || (dark ? "dark" : "light");
@@ -294,8 +592,14 @@ $("theme").onclick = () => {
 };
 const savedTheme = store("pt.theme");
 if (savedTheme) document.documentElement.dataset.theme = savedTheme;
+const savedSort = store("pt.sort");
+if (SORTS[savedSort]) state.sort = savedSort;
+$("sort").value = state.sort;
+const savedTab = store("pt.tab");
+if (CHIPS.includes(savedTab)) state.tab = savedTab;
 
 (async function init() {
+  state.pendingLink = parseHash();
   await refreshAll(true);
   // The timer exists only while the page is visible and focused. Losing focus or hiding the tab stops it
   // and no request is made until focus returns, at which point the page refreshes once and restarts it.

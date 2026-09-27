@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// jookoi-paper-trail viewer: read-only local web page over items.yaml and archive/items-*.yaml,
+// jookoi-paper-trail viewer: local web page over items.yaml and archive/items-*.yaml (read, plus adding items via the CLI),
 // for every repo that has used the store. No dependencies beyond the vendored js-yaml.
 //
 //   node viewer/server.js                 serve on http://127.0.0.1:4173 (foreground)
@@ -16,7 +16,8 @@
 const fs = require("fs");
 const path = require("path");
 const http = require("http");
-const { execSync, spawn } = require("child_process");
+const crypto = require("crypto");
+const { execSync, spawn, spawnSync } = require("child_process");
 const yaml = require("../vendor/js-yaml.cjs.js");
 const registry = require("../registry.js");
 
@@ -59,9 +60,36 @@ function toItems(map, archivedFrom) {
   }));
 }
 
-function layerData(root, layer) {
+// Signature of the YAML files behind a layer (name, mtime, size). Null when the layer folder is absent.
+function layerSig(root, layer) {
   const dir = path.join(root, LAYERS[layer]);
   if (!fs.existsSync(dir)) return null;
+  const files = [path.join(dir, "items.yaml")];
+  const arch = path.join(dir, "archive");
+  if (fs.existsSync(arch)) {
+    fs.readdirSync(arch).filter((f) => /^items-\d{4}-\d{2}\.yaml$/.test(f)).sort().forEach((f) => files.push(path.join(arch, f)));
+  }
+  return files.map((f) => {
+    try { const st = fs.statSync(f); return `${path.basename(f)}:${st.mtimeMs}:${st.size}`; } catch { return `${path.basename(f)}:-`; }
+  }).join("|");
+}
+
+const dataCache = new Map();
+
+// Re-reads the YAML only when the layer's signature changed.
+function layerData(root, layer) {
+  const sig = layerSig(root, layer);
+  if (sig === null) return null;
+  const key = root + "|" + layer;
+  const hit = dataCache.get(key);
+  if (hit && hit.sig === sig) return hit.data;
+  const data = readLayer(root, layer);
+  dataCache.set(key, { sig, data });
+  return data;
+}
+
+function readLayer(root, layer) {
+  const dir = path.join(root, LAYERS[layer]);
   const out = { layer, repo: path.basename(root).toLowerCase(), last_flush: null, items: [], error: null };
   try {
     const file = path.join(dir, "items.yaml");
@@ -97,10 +125,39 @@ function summary(root, i) {
 
 // ---------------------------------------------------------------- http
 
-function send(res, code, type, body) {
-  res.writeHead(code, { "Content-Type": type, "Cache-Control": "no-store" });
+function send(res, code, type, body, headers) {
+  res.writeHead(code, { "Content-Type": type, "Cache-Control": "no-store", ...headers });
   res.end(body);
 }
+
+const CLI = path.join(__dirname, "..", "jookoi-paper-trail.js");
+
+// Adds an item by calling the paper-trail CLI, so the store keeps a single writer with its own validation.
+// kind: "immediate" -> status now, "backlog" -> status parked.
+function addItem(root, layer, input) {
+  const title = String(input.title || "").trim();
+  const status = input.kind === "immediate" ? "now" : input.kind === "backlog" ? "parked" : null;
+  if (!title || title.includes("\n")) return { code: 400, error: "title must be a non-empty single line" };
+  if (!status) return { code: 400, error: "kind must be immediate or backlog" };
+  const args = [CLI, "add", "-", "--root", root];
+  if (layer === "private") args.push("--private");
+  const payload = JSON.stringify({ title, body: String(input.body || ""), status });
+  const r = spawnSync(process.execPath, args, { input: payload, encoding: "utf8", timeout: 15000, windowsHide: true });
+  const out = ((r.stdout || "") + (r.stderr || "")).trim();
+  if (r.status !== 0) return { code: 422, error: out.split("\n")[0] || "add failed" };
+  return { code: 200, message: out.split("\n")[0] };
+}
+
+function readJson(req, limit) {
+  return new Promise((resolve, reject) => {
+    let size = 0; const chunks = [];
+    req.on("data", (c) => { size += c.length; if (size > limit) { reject(new Error("too large")); req.destroy(); } else chunks.push(c); });
+    req.on("end", () => { try { resolve(JSON.parse(Buffer.concat(chunks).toString("utf8"))); } catch (e) { reject(e); } });
+    req.on("error", reject);
+  });
+}
+
+const RENDER_BUNDLE = path.join(__dirname, "..", "vendor", "jookoi-mdx-render.browser.js");
 
 function handler(port) {
   const allowedHosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
@@ -111,9 +168,27 @@ function handler(port) {
     if (url.pathname === "/" || url.pathname === "/index.html") {
       return send(res, 200, "text/html; charset=utf-8", fs.readFileSync(path.join(__dirname, "index.html")));
     }
+    if (url.pathname === "/vendor/jookoi-mdx-render.browser.js") {
+      return send(res, 200, "text/javascript; charset=utf-8", fs.readFileSync(RENDER_BUNDLE));
+    }
     if (url.pathname === "/api/ping") return send(res, 200, "application/json", JSON.stringify({ app: APP }));
     if (url.pathname === "/api/repos") {
       return send(res, 200, "application/json", JSON.stringify(registry.read().map((r, i) => summary(r, i))));
+    }
+    const add = url.pathname.match(/^\/api\/repo\/(\d+)\/items$/);
+    if (add) {
+      // The JSON content type forces a CORS preflight for foreign pages, and Origin must be this server.
+      const okOrigin = !req.headers.origin || allowedHosts.has(req.headers.origin.replace(/^https?:\/\//, ""));
+      if (req.method !== "POST" || !okOrigin || !/^application\/json/.test(req.headers["content-type"] || "")) {
+        return send(res, 403, "application/json", '{"error":"forbidden"}');
+      }
+      const root = registry.read()[Number(add[1])];
+      if (!root) return send(res, 404, "application/json", '{"error":"unknown repo"}');
+      return readJson(req, 64 * 1024).then((input) => {
+        const layer = LAYERS[input.layer] ? input.layer : "shared";
+        const r = addItem(root, layer, input);
+        send(res, r.code, "application/json", JSON.stringify(r.error ? { error: r.error } : { ok: true, message: r.message }));
+      }).catch(() => send(res, 400, "application/json", '{"error":"bad request"}'));
     }
     const m = url.pathname.match(/^\/api\/repo\/(\d+)$/);
     if (m) {
@@ -122,7 +197,11 @@ function handler(port) {
       if (!root || !LAYERS[layer]) return send(res, 404, "application/json", '{"error":"unknown repo or layer"}');
       const data = layerData(root, layer);
       if (!data) return send(res, 404, "application/json", '{"error":"layer not found"}');
-      return send(res, 200, "application/json", JSON.stringify(data));
+      // Conditional GET: the client polls this, and an unchanged store answers 304 with no body.
+      const etag = '"' + crypto.createHash("sha1").update(layerSig(root, layer)).digest("hex").slice(0, 16) + '"';
+      const cache = { ETag: etag, "Cache-Control": "no-cache" };
+      if (req.headers["if-none-match"] === etag) { res.writeHead(304, cache); return res.end(); }
+      return send(res, 200, "application/json", JSON.stringify(data), cache);
     }
     if (url.pathname === "/favicon.ico") { res.writeHead(204); return res.end(); }
     send(res, 404, "text/plain", "not found");

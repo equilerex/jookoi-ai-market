@@ -14,3 +14,5 @@ Personal Claude Code plugin marketplace. Optional, richer extension layer on top
 ## Baseline relationship
 
 `JooKoi-developer-stack` works standalone with no knowledge this repo exists. Copied skills' source of truth is the baseline repo — updates there don't auto-propagate here; re-copy by hand when a baseline skill changes and this plugin should pick it up.
+
+Local `npm start` and `npm run sync` copy marketplace skills only into global `~/.agents/skills` and `~/.claude/skills`. The sync script rejects repository skill directories to prevent global skills from shadowing project-specific discovery.
