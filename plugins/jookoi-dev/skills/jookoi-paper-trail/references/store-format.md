@@ -1,12 +1,18 @@
 # Working-set store
 
-The live working set is `_architecture/items.yaml` (private layer: `_jookoi-architecture/items.yaml`). `scripts/jookoi-paper-trail.js` is the only writer: never hand-edit the file, never regenerate it.
+The live working set is `_architecture/items.yaml` (private layer: `_jookoi-architecture/items.yaml`). The script (`scripts/jookoi-paper-trail.js`) is the normal writer: it adds and edits by ID without loading the whole file, and keeps the viewer working. Hand-editing is allowed for cleanup, such as merging or removing redundant entries. Run `check` after. Never regenerate the file wholesale.
 
 ```
 _architecture/
   items.yaml                    active set: now, parked, and done or dropped items not yet flushed
-  archive/items-YYYY-MM.yaml    flushed items, one file per month of ts_done
+  archived-items/items-YYYY-MM.yaml   flushed items, one file per month of ts_done
 ```
+
+Older repos keep flushed items in `archive/`. The script reads both and writes only `archived-items/`.
+
+## Granularity
+
+One item per implementation bubble, typically one per plan, edited over its life. Never one per change. A done item says what was achieved at the level a returning reader cares about, not which files changed. The body of a plan's item holds the plan path and one line of state, never the design. Consolidating over-granular items is a normal cleanup: merge siblings into one item whose body lists what they covered, drop the rest. Flush suggestions include it.
 
 Root resolution: `--root <path>`, else `git rev-parse --show-toplevel`, else walk up from cwd to a folder holding `_architecture/` or `_jookoi-architecture/`. `--private` picks the private layer.
 
@@ -69,10 +75,9 @@ Session checks, read-only apart from `--ack`:
 
 | Command | Returns |
 |---|---|
-| `sweep` | Uncommitted files newer than the last store write, `CONTEXT.md` files older than changes under them, changed folders with no context file, items with no body, missing hooks for this harness, or a note that the harness has none |
-| `sweep --ack "<reason>"` | Records why the remaining changes need no record, which quiets the gate until files change again. Refuses without a reason. Run it after recording, never before |
-| `sweep --gate` | Used by `doc-gate.sh`: prints only when the gate should block |
-| `hooks` | Per harness, whether the gate, rehydrate and preserve hooks are wired, and where |
+| `sweep` | Uncommitted files newer than the last store write, `CONTEXT.md` files older than changes under them, changed folders with no context file, items with no body, missing hooks for this harness, or a note that the harness has none. `rehydrate.sh` runs it at session start |
+| `sweep --ack "<reason>"` | Records why the remaining changes need no record. Refuses without a reason. Run it after recording, never before |
+| `hooks` | Per harness, whether the rehydrate, preserve and session-end hooks are wired, and where |
 | `hooks --print [--harness=H]` | The hooks fragment for this harness (or `H`: `claude`, `gemini`, `copilot`) with this install's paths, and the file it merges into |
 
 Every message that names an item prints `id title`. When you refer to an item in a reply, do the same: the user cannot act on a bare ID.
@@ -86,7 +91,7 @@ Writes, each a single call with no prior read:
 | `done <id>` / `park <id>` / `start <id>` / `drop <id>` | Status change. `done` sets `ts_done`, `start` sets `ts_started` if unset |
 | `edit <id> --title "<t>"` / `edit <id> -` / `edit <id> --file F` | Replaces the payload keys given (`title`, `body`) |
 | `move <id> <placement>` | Reprioritise |
-| `flush [--before=<date>]` | Moves `done` and `dropped` items to `archive/items-YYYY-MM.yaml` by month of `ts_done`. Touches nothing else. Refuses on an ID collision |
+| `flush [--before=<date>]` | Moves `done` and `dropped` items to `archived-items/items-YYYY-MM.yaml` by month of `ts_done`. Touches nothing else. Refuses on an ID collision |
 
 The payload is markdown or YAML. Use `--file` under PowerShell, where heredocs differ.
 
@@ -114,4 +119,4 @@ An unknown ID exits non-zero naming the ID, never a silent no-op. A malformed st
 
 ## Flush
 
-`flush` is non-destructive: it only moves finished items, so nothing live is at risk and there is no move-to-backlog step. Unflushed items load into every session's context. Flushed items are lookup-only: `find`, `show <id>` and `list --archived --last N`. Flush at a stable point after which older items are unlikely to matter next session, and follow `flush-prompt.md`, so the classification step runs the same way each time.
+`flush` is non-destructive: it only moves finished items, so nothing live is at risk and there is no move-to-backlog step. Unflushed items load into every session's context. Flushed items are lookup-only: `find`, `show <id>` and `list --archived --last N`, never browsed. Flush at a stable point after which older items are unlikely to matter next session, and follow `flush-prompt.md`, so the classification step runs the same way each time.

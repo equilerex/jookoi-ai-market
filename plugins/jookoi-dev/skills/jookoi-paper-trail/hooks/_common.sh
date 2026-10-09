@@ -2,7 +2,7 @@
 # jookoi-paper-trail hooks — shared helpers.
 # Spec: ../references/hooks.md
 #
-# Sourced by doc-gate.sh, preserve.sh, rehydrate.sh. POSIX sh, no bashisms.
+# Sourced by preserve.sh and rehydrate.sh. POSIX sh, no bashisms.
 
 HOOK_INPUT=$(cat)
 
@@ -53,20 +53,13 @@ emit_context() {
   esac
 }
 
-# Block the end of the turn with instructions. Falls back to a plain context
-# emit where blocking is unsupported -- see references/hooks.md.
+# Ask the model for one more turn before it stops. $1 = text, $2 = event name.
+# Claude Code Stop and Gemini AfterAgent honour {"decision":"block"}. Copilot's
+# Stop is unverified, so there the text is printed as context only.
 emit_block() {
   _text=$(printf '%s' "$1" | json_escape)
   case "$(harness)" in
-    claude)
-      printf '{"decision":"block","reason":"%s","hookSpecificOutput":{"hookEventName":"%s","additionalContext":"%s"}}\n' "$_text" "$2" "$_text"
-      ;;
-    gemini|copilot)
-      # Blocking support unverified on these harnesses; degrade to a written
-      # reminder that the next SessionStart surfaces.
-      mkdir -p "$PRIV"
-      printf '\n## %s — unflushed at session end\n\n%s\n' "$(date +%Y-%m-%d)" "$1" >> "$PRIV/session-log.md"
-      emit_context "$1" "$2"
-      ;;
+    claude|gemini) printf '{"decision":"block","reason":"%s"}\n' "$_text" ;;
+    copilot) emit_context "$1" "$2" ;;
   esac
 }

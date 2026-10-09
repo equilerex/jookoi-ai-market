@@ -11,51 +11,54 @@ Paths are given for the shared layer. The private layer is identical with the `_
 **Policy comment.** Line 2 of every managed file is an HTML comment stating what the file is and who maintains it. It is the only thing a cold agent has to identify the file from its contents alone.
 
 **Dates and timestamps.** Two formats, by where they sit:
-- **Filenames and keys** (`plans/YYYY-MM-DD-topic.md`, `archive/items-YYYY-MM.yaml`, `--before=`/`--since=` flags): `YYYY-MM-DD`, always — sorts correctly as plain text.
+- **Filenames and keys** (`plans/YYYY-MM-DD-topic.md`, `archived-items/items-YYYY-MM.yaml`, `--before=`/`--since=` flags): `YYYY-MM-DD`, always — sorts correctly as plain text.
 - **Prose content** (`Date:`, `Session:`, `updated:`, and `items.yaml`'s `ts_*` fields): a full timestamp, not a bare date — same-day entries need ordering. In MD prose, European order: `DD-MM-YYYY HH:MM`, local time. In `items.yaml`, full ISO 8601 UTC (`references/store-format.md`).
 
 Never relative ("yesterday", "last session"). The script supplies every date and timestamp; never hand-write one.
 
 **Line width.** No hard wrap. One paragraph is one line.
 
-**Wiped names.** Once something is removed or rejected, live docs stop naming it. `plans/decision-history/` holds the name and the reasoning, and that is where a reader goes. Name it outside that folder only when the reader has to act on it: they might still have it installed, they will hit it in someone else's setup, or the reason it failed is a rule that now binds other choices. "We considered X" is not a lesson.
+**Tone.** Every record, shared or private, is professional and neutral, with no blame and no self-deprecation. A mistake is recorded as what happened, the fix and the rule that came out of it. Forward only.
+
+**Wiped names.** Once something is removed or rejected, live docs stop naming it. Name it only when the reader has to act on it: they might still have it installed, they will hit it in someone else's setup, or the reason it failed is a rule that now binds other choices. "We considered X" is not a lesson.
 
 ---
 
-## `_architecture/items.yaml` and `archive/items-YYYY-MM.yaml`
+## `_architecture/items.yaml` and `archived-items/items-YYYY-MM.yaml`
 
-The working-set store and its monthly archive. Script-written only. Full spec: `references/store-format.md`. Archive files are not read unless history is asked for; `find`, `show` and `list --archived --last N` reach them.
+The working-set store and its monthly archive. Normally script-written, hand-editing allowed for cleanup (run `check` after). Full spec: `references/store-format.md`. Archive files are not read unless history is asked for. `find`, `show` and `list --archived --last N` reach them. Older repos may still have `archive/`, which the script also reads.
 
 ---
 
 ## `_architecture/plans/YYYY-MM-DD-topic.md`
 
-One file per planning session. Kept permanently, never capped, never deleted.
+One file per feature or design question. Created by `new-plan` at the start of planning, drafted in the file.
 
 ```markdown
 # Title
 
-Session: DD-MM-YYYY HH:MM. Status: <one line>.
+Session: DD-MM-YYYY HH:MM. Status: draft.
 
 ## Context
 ## <the design, in whatever sections it needs>
-## Build order
+## Deliverables
+## Fold-out
 ## Implementation deviations
 ```
 
-Only `Context` and the `Session:` line are required. `Implementation deviations` is added when the build diverges from what the plan said, and is the section future reads reconcile against.
+Only the `Session:` line is required. The headings are a starting point: keep what the plan needs, drop the rest, add others. Examples of the expected length and tone: `references/examples.md`. `Status:` runs draft, ready, in progress, done by convention, not enforced. `Deliverables` holds progress (ticks, notes), updated in bulk. `Fold-out` names each durable outcome and the read-path doc it goes to (`ARCHITECTURE.md`, `CONTEXT.md`, `AGENTS.md`, `README.md`). `none: <reason>` is valid. `Implementation deviations` records calls the plan did not cover and is what future reads reconcile against.
 
-**Does not go in:** running status (that drifts — it belongs in the store); anything that will need editing as work proceeds, other than the deviations section.
+`plans/` holds plans only. Handoff notes, research, generated files and mocks go elsewhere (SKILL.md, "Lifecycle of feature work").
 
-**Once the build it describes is done**, move the file to `plans/implemented/YYYY-MM-DD-topic.md` — same name, same content, no rewrite. This is a plain move, not archiving: the file stays permanently and is still the record `Implementation deviations` reconciles against, it just stops sitting in the folder a cold session scans by default. `plans/` root is for plans still open or in flight; `plans/implemented/` is read only when a plan is named explicitly. Decision files (`plans/decision-history/`) don't move.
+**Closing.** `close-plan <file>` sets `Status: done` and moves the file to `plans/archived-plans/` with no other edit. It warns when `Fold-out` is missing or empty. An archived plan is read only when a doc, an item or the user names it. Older repos may still have `plans/implemented/`, which the script also reads.
 
 ---
 
-## `_architecture/plans/decision-history/NNN-slug.md`
+## `_architecture/plans/archived-decisions/NNN-slug.md`
 
-Background on why a rule exists: one call made outside a planning session, with its reasoning. It is not a rule. The rule lives in `ARCHITECTURE.md`, `AGENTS.md` or `CONTEXT.md`. A call made inside a planning session is recorded in that plan, not in a separate file. Agents do not read this folder proactively: open a file only when a doc cites it or the user asks why.
+A footnote to a rule in a read-path doc: reasoning that would bloat that doc and is likely to be asked about again. It is not a rule, and it is not for anything a plan, an item or a deviation already covers. A call agreed in chat goes into the active plan or straight into the read-path doc it changes. Agents do not read this folder unprompted: open a file only when a doc links it or the user asks why.
 
-`NNN` is zero-padded, allocated by `jookoi-paper-trail new-decision`, never reused. `new-decision` also appends a line to `index.md`, which holds one line per decision (`- [NNN Title](NNN-slug.md): what it explains`). `check` compares the index against the folder. A decision whose content is already stated in `ARCHITECTURE.md` or `AGENTS.md` is folded in and its file deleted, with inbound links repointed.
+`NNN` is zero-padded, allocated by `jookoi-paper-trail new-decision`, never reused. There is no index file. The doc whose rule the decision explains links to it, and the file names that doc on its `Linked from:` line. `check` flags decision files that no read-path doc links. A decision whose content is already stated in `ARCHITECTURE.md` or `AGENTS.md` is folded in and its file deleted, with inbound links repointed. Older repos may still have `plans/decision-history/`, which the script also reads.
 
 ```markdown
 # Decision NNN — Title
@@ -64,16 +67,16 @@ Date: DD-MM-YYYY HH:MM
 
 Status: DECIDED
 
+Linked from: <read-path doc>
+
 ## Problem
-## Options considered
 ## Decision
 ## Why not the alternatives
-## Next step
 ```
 
-All five sections are required. `Status:` is one token from: `DECIDED`, `TRIAL`, `REJECTED`, `DEFERRED`, `SUPERSEDED`. A superseding decision gets its own number; the superseded file's status changes and its body gains a pointer.
+Headings are suggestions. Write what a reader asking "why?" needs, nothing more. `check` only expects the `Linked from:` line. `Status:` is one token from: `DECIDED`, `TRIAL`, `REJECTED`, `DEFERRED`, `SUPERSEDED`. A superseding decision gets its own number. The superseded file's status changes and its body gains a pointer.
 
-**Does not go in:** decisions still being made (they are not decisions yet); implementation detail.
+**Does not go in:** decisions still being made (they are not decisions yet), implementation detail.
 
 ---
 
@@ -102,7 +105,7 @@ Glitches, footguns, surprises.
 Tried and rejected.
 ```
 
-All four sections stay even when briefly empty — their absence is indistinguishable from an omission. `updated:` is bumped by the script on every write.
+Headings are suggestions. Use the ones that have something in them, drop the rest: a `CONTEXT.md` with only a `Gotchas` section is normal. `updated:` is bumped by the script on every write.
 
 **Created** the first time real work happens in the folder, by whoever does that work. **Never** bulk-generated across a tree.
 
@@ -128,6 +131,5 @@ The script refuses and reports rather than guessing when:
 
 - A managed file's line 1 heading does not match its expected title.
 - `items.yaml` or an archive file is not valid YAML, or an item has a status outside `now | parked | done | dropped`.
-- A `CONTEXT.md` lacks any of its four sections.
 
 A refusal names the file, the line, and what was expected. It never rewrites the file to fix it — that is the model's call, since a malformed file usually means content was placed by hand for a reason.

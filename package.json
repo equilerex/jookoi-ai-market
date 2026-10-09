@@ -9,11 +9,11 @@
     "// claude": "Installs the plugin from this local checkout into Claude Code: registers the marketplace, refreshes it, then installs or updates jookoi-dev@jookoi-ai-market. Bump plugin.json version first.",
     "claude": "claude plugin marketplace add ./ && claude plugin marketplace update jookoi-ai-market && claude plugin install jookoi-dev@jookoi-ai-market && claude plugin update jookoi-dev@jookoi-ai-market",
 
-    "// sync": "Copies the latest skills from plugins/*/skills/ into configured global skill folders. Run after pulling or editing a skill.",
-    "sync": "node scripts/sync-skills.mjs",
+    "// sync": "Synchronizes skills on demand using the new skill script.",
+    "sync": "node D:/repos/Serenity/JooKoi-developer-stack/utility-scripts/copy-skill.js",
 
     "// sync:force": "Overwrites target copies even when they are newer than this repo.",
-    "sync:force": "node scripts/sync-skills.mjs --force",
+    "sync:force": "node D:/repos/Serenity/JooKoi-developer-stack/utility-scripts/copy-skill.js --force",
 
     "// update-skills": "Validates plugin manifests, checks SKILL.md metadata, and re-audits cross-references.",
     "update-skills": "node scripts/check-marketplace-skills.mjs --update"

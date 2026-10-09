@@ -1,10 +1,10 @@
 ---
 name: jookoi-write-like-a-person
-description: Human tone for replies and people-facing text. Direct, honest, no padding. For emails, messages, explanations.
+description: Use whenever replying to or answering the user, and whenever drafting text meant for other people (an email, a message, a non-technical explanation) -- including when that text happens to be saved as a .md file. Trigger even if the user hasn't asked for a tone or writing-style check. For technical documentation (README, architecture notes, another SKILL.md), prefer jookoi-write-casual-technical when it's installed.
 metadata:
-  last_updated: "2026-09-23T00:00:00Z"
   author: Joosep Kõivistik
   repository: https://github.com/equilerex/jookoi-ai-market
+  last_updated: "2026-10-09T23:48:31Z"
 ---
 
 # Writing like a person, not an assistant

@@ -1,19 +1,15 @@
 # <Title>
 
-Session: DD-MM-YYYY HH:MM. Status: <one line>.
+Session: DD-MM-YYYY HH:MM. Status: draft.
+
+<!-- Headings below are a starting point, not a checklist. Keep what this plan needs, drop the
+     rest, add your own. Short is fine. Tone and density: references/examples.md.
+     Status by convention: draft, ready, in progress, done. Delete this comment. -->
 
 ## Context
 
-<Why this work is being done — the problem, what prompted it, the intended outcome.>
+## Deliverables
 
-<!-- Then whatever sections the design itself needs. Only Context and the Session: line
-     are required. Kept permanently: never capped, never deleted, never edited to track
-     running status — that drifts, and belongs in the store (items.yaml). Once the build
-     is done, move this file to plans/implemented/ unchanged. -->
-
-## Build order
+## Fold-out
 
 ## Implementation deviations
-
-<!-- Added once the build diverges from what this plan said. Future reads reconcile
-     against this section, not just the sections above. -->

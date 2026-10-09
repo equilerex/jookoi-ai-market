@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 // jookoi-paper-trail — working-set store and context-file mechanics.
-// Design: _architecture/plans/2026-09-24-remove-todo-md-route-by-information-type.md
-// Spec:   ../references/store-format.md, ../references/file-formats.md
+// Spec: ../references/store-format.md, ../references/file-formats.md
 //
 // Usage:
 //   jookoi-paper-trail list [--status=S] [--since=DATE] [--stale=DAYS]   default: now items + 3 latest done
@@ -14,13 +13,15 @@
 //   jookoi-paper-trail done|park|start|drop <id>
 //   jookoi-paper-trail edit <id> --title "<t>" | - | --file F   payload keys given replace the item's
 //   jookoi-paper-trail move <id> <placement>                placement: --after=ID --before=ID --first --last
-//   jookoi-paper-trail flush [--before=DATE]                done+dropped -> archive/items-YYYY-MM.yaml
+//   jookoi-paper-trail flush [--before=DATE]                done+dropped -> archived-items/items-YYYY-MM.yaml
 //   jookoi-paper-trail stale [DAYS]                         stale now items, plus CONTEXT.md files behind their folder
 //   jookoi-paper-trail check                                validate the store and managed files
-//   jookoi-paper-trail sweep [--gate] [--ack "<reason>"]    uncommitted work vs the store and context files
+//   jookoi-paper-trail sweep [--ack "<reason>"]             uncommitted work vs the store and context files
+//   jookoi-paper-trail nudge --session <id> [--start]       end-of-turn reminder, at most once per session (hooks only)
 //   jookoi-paper-trail hooks [--print [--harness=H]]        which hooks are wired; --print: fragment for this install
-//   jookoi-paper-trail new-decision "<title>"               next NNN in plans/decision-history/, listed in index.md
-//   jookoi-paper-trail new-plan "<topic>"                   dated plan file from template
+//   jookoi-paper-trail new-decision "<title>"               next NNN in plans/archived-decisions/
+//   jookoi-paper-trail new-plan "<topic>"                   dated plan file from template, Status: draft
+//   jookoi-paper-trail close-plan <file>                    Status: done, move to plans/archived-plans/
 //
 // Global flags: --private (operate on _jookoi-architecture/), --root <path>, --dry-run
 //
@@ -40,8 +41,12 @@ const STATUSES = ["now", "parked", "done", "dropped"];
 const STEP = 1000;
 // Dump with the schema load uses, and never fold long lines.
 const YAML_OPTS = { schema: yaml.CORE_SCHEMA, lineWidth: -1, noRefs: true };
+// Flushed items go to the first folder. The second is the older layout, still read.
+const ARCHIVE_DIRS = ["archived-items", "archive"];
+// Plan and decision folders: first is where files are written, the rest are the older layout, still read.
+const PLAN_ARCHIVES = ["archived-plans", "implemented"];
+const DECISION_DIRS = ["archived-decisions", "decision-history"];
 // Starts with a letter and holds a digit, so YAML never reads an id as a number, boolean or null.
-const INDEX_PLACEHOLDER = "one line on what it explains.";
 const ID_RE =/^[a-z][a-z0-9]*[0-9][a-z0-9]*$/;
 
 class Refusal extends Error {}
@@ -162,9 +167,13 @@ function saveStore(ctx, loaded) {
 }
 
 function archiveFiles(ctx) {
-  const dir = path.join(ctx.arch, "archive");
-  if (!fs.existsSync(dir)) return [];
-  return fs.readdirSync(dir).filter((f) => /^items-\d{4}-\d{2}\.yaml$/.test(f)).sort().map((f) => path.join(dir, f));
+  const out = [];
+  ARCHIVE_DIRS.forEach((name) => {
+    const dir = path.join(ctx.arch, name);
+    if (!fs.existsSync(dir)) return;
+    fs.readdirSync(dir).filter((f) => /^items-\d{4}-\d{2}\.yaml$/.test(f)).sort().forEach((f) => out.push(path.join(dir, f)));
+  });
+  return out;
 }
 
 function loadArchive(file) {
@@ -362,14 +371,15 @@ function cmdFind(ctx, [text]) {
   archivedEntries(ctx).forEach(([id, it, f]) => {
     if (matches(it, needle)) { ctx.report(`${line(id, it)}  (archived: ${path.basename(f)})`); hits++; }
   });
-  const legacy = path.join(ctx.arch, "archive");
-  if (fs.existsSync(legacy)) {
-    fs.readdirSync(legacy).filter((f) => /^\d{4}-\d{2}\.md$/.test(f)).forEach((f) => {
-      fs.readFileSync(path.join(legacy, f), "utf8").split("\n").forEach((l, i) => {
-        if (l.toLowerCase().includes(needle)) { ctx.report(`archive/${f}:${i + 1}: ${l.trim().slice(0, 140)}`); hits++; }
+  ARCHIVE_DIRS.forEach((name) => {
+    const dir = path.join(ctx.arch, name);
+    if (!fs.existsSync(dir)) return;
+    fs.readdirSync(dir).filter((f) => /^\d{4}-\d{2}\.md$/.test(f)).forEach((f) => {
+      fs.readFileSync(path.join(dir, f), "utf8").split("\n").forEach((l, i) => {
+        if (l.toLowerCase().includes(needle)) { ctx.report(`${name}/${f}:${i + 1}: ${l.trim().slice(0, 140)}`); hits++; }
       });
     });
-  }
+  });
   if (!hits) ctx.report("(no matches)");
 }
 
@@ -435,7 +445,7 @@ function cmdAdd(ctx, args, opts) {
 // enough for a cold session to act on it.
 function bodyNotes(ctx, store, id, item) {
   if (!item.body) {
-    ctx.report(`note: ${id} has no body. Keep it title-only only if the title says everything. Otherwise: edit ${id} --file F with context, current state, next step, and pointers to files, plans or decisions.`);
+    ctx.report(`note: ${id} has no body. Keep it title-only only if the title says everything. Otherwise: edit ${id} --file F with context, current state, next step, and pointers to files and plans.`);
     return;
   }
   const bare = Object.entries(store.items)
@@ -484,7 +494,7 @@ function cmdMove(ctx, [id], opts) {
   ctx.report(`${label(realId, item)} moved`);
 }
 
-// Moves done and dropped items out of the live store into archive/items-YYYY-MM.yaml,
+// Moves done and dropped items out of the live store into archived-items/items-YYYY-MM.yaml,
 // one file per month of ts_done. Nothing else is touched.
 function cmdFlush(ctx, _args, opts) {
   const loaded = loadStore(ctx);
@@ -506,11 +516,11 @@ function cmdFlush(ctx, _args, opts) {
   assertUnchanged(loaded); // before any archive file is written, so a refusal leaves nothing duplicated
   const written = [];
   Object.entries(byMonth).sort().forEach(([month, group]) => {
-    const file = path.join(ctx.arch, "archive", `items-${month}.yaml`);
+    const file = path.join(ctx.arch, ARCHIVE_DIRS[0], `items-${month}.yaml`);
     const arch = fs.existsSync(file) ? loadArchive(file) : { items: {} };
     group.forEach(([id, it]) => { arch.items[id] = it; });
     ctx.write(file, yaml.dump(arch, YAML_OPTS));
-    written.push(`archive/items-${month}.yaml`);
+    written.push(`${ARCHIVE_DIRS[0]}/items-${month}.yaml`);
   });
   moving.forEach(([id]) => delete store.items[id]);
   store.last_flush = nowISO();
@@ -557,7 +567,7 @@ function cmdStale(ctx, [days]) {
 
 // ------------------------------------------------------------ hooks and sweep
 
-// Where each harness keeps hook registrations, and the three hook scripts to look for.
+// Where each harness keeps hook registrations.
 function hookFiles(root) {
   const home = os.homedir();
   return {
@@ -573,7 +583,18 @@ function hookFiles(root) {
   };
 }
 
-const HOOK_SCRIPTS = { gate: "doc-gate.sh", rehydrate: "rehydrate.sh", preserve: "preserve.sh" };
+// rehydrate and preserve are found by script name. sessionEnd is preserve.sh registered under a SessionEnd-type event.
+const HOOK_SCRIPTS = { rehydrate: "rehydrate.sh", preserve: "preserve.sh", nudge: "nudge.sh" };
+const SESSION_END_EVENTS = ["SessionEnd", "sessionEnd"];
+// Harnesses whose docs list a session-end event. Verified 09-10-2026: Claude Code SessionEnd, Gemini CLI SessionEnd, Copilot CLI sessionEnd.
+const HAS_SESSION_END = { "Claude Code": true, "Gemini CLI": true, "Copilot CLI": true };
+
+function registersSessionEnd(text) {
+  try {
+    const hooks = JSON.parse(text).hooks || {};
+    return SESSION_END_EVENTS.some((ev) => JSON.stringify(hooks[ev] || []).includes(HOOK_SCRIPTS.preserve));
+  } catch { return SESSION_END_EVENTS.some((ev) => text.includes(ev)) && text.includes(HOOK_SCRIPTS.preserve); }
+}
 
 // Harnesses with hook support, the fragment for each, and where it merges.
 const HARNESSES = {
@@ -592,7 +613,7 @@ function detectHarness() {
   return null;
 }
 
-const NO_HOOKS = "No hook-capable harness detected (hooks exist for Claude Code, Gemini CLI and Copilot CLI; JOOKOI_HARNESS=claude|gemini|copilot overrides detection). Nothing checks this session for you: run `list` at session start and `sweep` before ending any turn that changed files.";
+const NO_HOOKS = "No hook-capable harness detected (hooks exist for Claude Code, Gemini CLI and Copilot CLI; JOOKOI_HARNESS=claude|gemini|copilot overrides detection). Nothing checks this session for you: run `list` and `sweep` at session start.";
 
 function hooksStatus(root) {
   return Object.entries(hookFiles(root)).map(([harness, files]) => {
@@ -600,6 +621,7 @@ function hooksStatus(root) {
     files.filter((f) => fs.existsSync(f)).forEach((f) => {
       const text = fs.readFileSync(f, "utf8");
       Object.entries(HOOK_SCRIPTS).forEach(([job, script]) => { if (text.includes(script)) found[job] = f; });
+      if (registersSessionEnd(text)) found.sessionEnd = f;
     });
     return { harness, found };
   });
@@ -616,7 +638,7 @@ function hookCommand(script) {
 
 function missingHooksMessage(key) {
   const h = HARNESSES[key];
-  return `${h.name} hooks are missing: nothing lists the working set at session start or checks at the end of a turn. Tell the user once, and offer to merge the output of \`hooks --print\` (paths already point at this install) into ${h.target}, adding to existing entries, with their approval. Until then, run \`sweep\` before ending any turn that changed files. Details: references/hooks.md.`;
+  return `${h.name} hooks are missing: nothing lists the working set or surfaces unrecorded work at session start. Tell the user once, and offer to merge the output of \`hooks --print\` (paths already point at this install) into ${h.target}, adding to existing entries, with their approval. Until then, run \`list\` and \`sweep\` at session start. Details: references/hooks.md.`;
 }
 
 function cmdHooks(ctx, _args, opts) {
@@ -633,13 +655,15 @@ function cmdHooks(ctx, _args, opts) {
   }
   const status = hooksStatus(ctx.root);
   status.forEach(({ harness, found }) => {
-    const jobs = Object.keys(HOOK_SCRIPTS).map((j) => `${j} ${found[j] ? `yes (${found[j].replace(home, "~")})` : "no"}`);
+    const jobKeys = Object.keys(HOOK_SCRIPTS).concat(HAS_SESSION_END[harness] ? ["sessionEnd"] : []);
+    const jobs = jobKeys.map((j) => `${j} ${found[j] ? `yes (${found[j].replace(home, "~")})` : "no"}`);
     const mark = current && HARNESSES[current].name === harness ? "  <- this session" : "";
     ctx.report(`${harness}: ${jobs.join(", ")}${mark}`);
   });
   if (!current) return ctx.report(NO_HOOKS);
   const found = status.find((h) => h.harness === HARNESSES[current].name).found;
-  if (!found.gate || !found.rehydrate) ctx.report(missingHooksMessage(current));
+  if (!found.rehydrate) ctx.report(missingHooksMessage(current));
+  else if (HAS_SESSION_END[HARNESSES[current].name] && !found.sessionEnd) ctx.report(`${HARNESSES[current].name}: no SessionEnd hook. Optional: \`hooks --print\` shows the entry that preserves raw notes when a session ends. Details: references/hooks.md.`);
 }
 
 function mtime(file) {
@@ -653,6 +677,11 @@ function ackFile(root) {
 
 // Docs and the store itself are the record, not the work being recorded.
 const RECORD_RE = /^(_architecture|_jookoi-architecture)\/|(^|\/)(_jookoi-)?CONTEXT\.md$|(^|\/)(AGENTS|CLAUDE)\.md$/;
+// Moving a file into an archive is housekeeping, not recording work.
+const ARCHIVED_RE = /(^|\/)archived-[^/]+\//;
+const isRecordWrite = (p) => RECORD_RE.test(p) && !ARCHIVED_RE.test(p);
+// Lockfiles and build output carry no decision, so a change to them alone never needs a record.
+const NOISE_RE = /(^|\/)(package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb?|Cargo\.lock|poetry\.lock|uv\.lock|composer\.lock|Gemfile\.lock)$|(^|\/)(dist|node_modules|coverage|\.angular|\.next|\.nuxt|__pycache__)\//;
 
 function hhmm(ms) {
   if (!ms) return "never";
@@ -662,33 +691,67 @@ function hhmm(ms) {
 
 // Compares uncommitted work against the working set and the context files. Mechanical
 // only: it says what might be unrecorded; deciding what to write is the model's job.
+// Uncommitted files and which of them are newer than the last record. null outside git.
+function workState(ctx) {
+  let porcelain;
+  try {
+    porcelain = execSync("git status --porcelain -z --untracked-files=all", { cwd: ctx.root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+  } catch { return null; }
+  const isFile = (p) => fs.existsSync(path.join(ctx.root, p)) && fs.statSync(path.join(ctx.root, p)).isFile();
+  const entries = porcelain.split("\0").filter(Boolean).map((e) => e.slice(3).replace(/\\/g, "/"));
+  const changed = entries.filter((p) => !RECORD_RE.test(p) && !NOISE_RE.test(p) && isFile(p));
+  // A plan, decision, CONTEXT.md, ARCHITECTURE.md or AGENTS.md written after the code is a record too.
+  const docWrite = Math.max(0, ...entries.filter((p) => isRecordWrite(p) && isFile(p)).map((p) => mtime(path.join(ctx.root, p))));
+  const storeWrite = Math.max(mtime(path.join(ctx.root, "_architecture", "items.yaml")), mtime(path.join(ctx.root, "_jookoi-architecture", "items.yaml")));
+  const recorded = Math.max(storeWrite, docWrite, mtime(ackFile(ctx.root)));
+  const unrecorded = changed.filter((p) => mtime(path.join(ctx.root, p)) > recorded);
+  return { changed, unrecorded, storeWrite, recorded };
+}
+
+// End-of-turn reminder, at most once per session. Silent unless this session left
+// enough unrecorded work, or an open plan looks finished. A reminder, not a gate:
+// once fired it never fires again in that session, whatever the agent does with it.
+function nudgeFile(root, session, suffix) {
+  const key = `${path.resolve(root).toLowerCase()}|${session}`;
+  return path.join(os.homedir(), ".jookoi-paper-trail", "nudge", crypto.createHash("sha1").update(key).digest("hex").slice(0, 16) + suffix);
+}
+
+function cmdNudge(ctx, _args, opts) {
+  const session = opts.session || "no-session";
+  const started = nudgeFile(ctx.root, session, ".start");
+  const fired = nudgeFile(ctx.root, session, ".fired");
+  if (opts.start) { fs.mkdirSync(path.dirname(started), { recursive: true }); if (!fs.existsSync(started)) fs.writeFileSync(started, ""); return; }
+  if (fs.existsSync(fired)) return;
+  const work = workState(ctx);
+  if (!work) return;
+  // Only this session's work counts: leftovers from earlier sessions were already shown at SessionStart.
+  const since = mtime(started);
+  const mine = work.unrecorded.filter((p) => mtime(path.join(ctx.root, p)) > since);
+  const minFiles = Number(process.env.JOOKOI_NUDGE_MIN_FILES) || 8;
+  const ready = plansReadyToClose(ctx);
+  const reasons = [];
+  if (mine.length >= minFiles) reasons.push(`${mine.length} files changed this session since the last record.`);
+  if (ready.length) reasons.push(`${ready.length === 1 ? "An open plan looks" : "Open plans look"} finished: ${ready.join(", ")}. Fold out, then close-plan.`);
+  if (!reasons.length) return;
+  fs.mkdirSync(path.dirname(fired), { recursive: true });
+  fs.writeFileSync(fired, new Date().toISOString());
+  ctx.report(`jookoi-paper-trail reminder (once per session): ${reasons.join(" ")} If progress is not recorded yet, record it now: the active plan's progress or deviations, the item body, or a read-path doc. If it already is, or the changes need no record, ignore this and finish.`);
+}
+
 function cmdSweep(ctx, [reason], opts) {
   const ack = ackFile(ctx.root);
   if (opts.ack) {
     // A reason makes the ack a judgement about these changes, not a way to clear the output.
     if (!reason || reason.trim().length < 15) refuse("sweep --ack", "needs a reason, e.g. sweep --ack \"only formatting in src/, no calls or state changes\". Record first if anything in the sweep is unrecorded, then ack only what is left.");
     if (!ctx.dryRun) { fs.mkdirSync(path.dirname(ack), { recursive: true }); fs.writeFileSync(ack, `${new Date().toISOString()} ${reason.trim()}\n`); }
-    return ctx.report(`acknowledged: ${reason.trim()}. The gate stays quiet until files change again.`);
+    return ctx.report(`acknowledged: ${reason.trim()}. Changes up to now count as reviewed.`);
   }
 
-  let porcelain;
-  try {
-    porcelain = execSync("git status --porcelain -z --untracked-files=all", { cwd: ctx.root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
-  } catch { if (!opts.gate) ctx.report("sweep: skipped (not a git repository)"); return; }
-  const changed = porcelain.split("\0").filter(Boolean)
-    .map((e) => e.slice(3).replace(/\\/g, "/"))
-    .filter((p) => !RECORD_RE.test(p) && fs.existsSync(path.join(ctx.root, p)) && fs.statSync(path.join(ctx.root, p)).isFile());
-  const newest = Math.max(0, ...changed.map((p) => mtime(path.join(ctx.root, p))));
-  const storeWrite = Math.max(mtime(path.join(ctx.root, "_architecture", "items.yaml")), mtime(path.join(ctx.root, "_jookoi-architecture", "items.yaml")));
-  const recorded = Math.max(storeWrite, mtime(ack));
-
-  if (opts.gate) {
-    const quietMs = Number(process.env.JOOKOI_GATE_QUIET_MIN || 10) * 60000;
-    if (!changed.length || newest <= recorded || Date.now() - recorded < quietMs) return;
-  }
+  const work = workState(ctx);
+  if (!work) { ctx.report("sweep: skipped (not a git repository)"); return; }
+  const { changed, unrecorded, storeWrite, recorded } = work;
 
   const findings = [];
-  const unrecorded = changed.filter((p) => mtime(path.join(ctx.root, p)) > recorded);
   if (unrecorded.length) {
     // Grouped by folder: a flat list of 18 paths reads as noise and invites a blanket ack.
     const groups = new Map();
@@ -712,8 +775,9 @@ function cmdSweep(ctx, [reason], opts) {
     }
   });
   stale.forEach((n, f) => findings.push(`${f} is older than ${n} change${n === 1 ? "" : "s"} under it: still true?`));
-  // Informational only, so it stays out of the gate's block message.
-  if (bare.size && !opts.gate) findings.push(`changed folders with no CONTEXT.md: ${[...bare].slice(0, 6).join(", ")}. Create one only if a newcomer would need context the code does not show.`);
+  if (bare.size) findings.push(`changed folders with no CONTEXT.md: ${[...bare].slice(0, 6).join(", ")}. Create one only if a newcomer would need context the code does not show.`);
+  const ready = plansReadyToClose(ctx);
+  if (ready.length) findings.push(`open plans that look finished (fold out, then close-plan): ${ready.join(", ")}`);
 
   try {
     const { store } = loadStore(ctx);
@@ -721,13 +785,12 @@ function cmdSweep(ctx, [reason], opts) {
     if (noBody.length) findings.push(`items with no body: ${noBody.slice(0, 8).map(([id, it]) => label(id, it)).join("; ")}${noBody.length > 8 ? "; ..." : ""}`);
   } catch (e) { if (e instanceof Refusal) findings.push(e.message); else throw e; }
 
-  // The gate only runs when hooks are wired, so this matters for manual sweeps.
-  if (!opts.gate) {
+  {
     const current = detectHarness();
     if (!current) findings.push(NO_HOOKS);
     else {
       const found = hooksStatus(ctx.root).find((h) => h.harness === HARNESSES[current].name).found;
-      if (!found.gate || !found.rehydrate) findings.push(missingHooksMessage(current));
+      if (!found.rehydrate) findings.push(missingHooksMessage(current));
     }
   }
 
@@ -735,62 +798,112 @@ function cmdSweep(ctx, [reason], opts) {
   ctx.report("sweep:");
   findings.forEach((f) => ctx.report(`- ${f}`));
   ctx.report("Before acking, check what the changes carry, not just the files:");
-  ctx.report("- a call made since the last record, by the user or by you while implementing -> plan's deviations section, or new-decision");
+  ctx.report("- a call made since the last record, by the user or by you while implementing -> the active plan's deviations section, or the read-path doc it changes");
   ctx.report("- a topology, config, deploy or credentials change -> ARCHITECTURE.md or the folder's CONTEXT.md");
   ctx.report("- work started, finished or found -> start / done / add (with a body)");
+  ctx.report("Record only what a later session restoring from these files would need: calls and their reasons, state, what is still open. Typos, formatting, lockfiles and a one-line fix inside work already recorded need no record.");
   ctx.report("Then `sweep --ack \"<why the rest needs no record>\"`, only after recording.");
+}
+
+// Folders that exist in the older layout. Reported once, never per file.
+const OLD_LAYOUT = ["archive", "plans/implemented", "plans/decision-history", "plans/decisions"];
+
+function decisionFiles(ctx) {
+  const out = [];
+  DECISION_DIRS.concat(["decisions"]).forEach((name) => {
+    const dir = path.join(ctx.arch, "plans", name);
+    if (!fs.existsSync(dir)) return;
+    fs.readdirSync(dir).filter((f) => /^\d{3}-.*\.md$/.test(f)).forEach((f) => out.push({ name, file: f, abs: path.join(dir, f) }));
+  });
+  return out;
+}
+
+// Docs an agent reads unprompted. A decision file is expected to be linked from one of them.
+function readPathDocs(ctx) {
+  const files = ["README.md", "AGENTS.md", "CLAUDE.md"].map((f) => path.join(ctx.root, f));
+  if (fs.existsSync(ctx.arch)) {
+    fs.readdirSync(ctx.arch).filter((f) => /ARCHITECTURE\.md$/.test(f)).forEach((f) => files.push(path.join(ctx.arch, f)));
+  }
+  try {
+    execSync("git ls-files -z", { cwd: ctx.root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).split("\0")
+      .filter((f) => /(^|\/)((_jookoi-)?CONTEXT|SKILL)\.md$/.test(f) &&!/(^|\/)assets\/templates\//.test(f))
+      .forEach((f) => files.push(path.join(ctx.root, f)));
+  } catch { /* not a git repository: CONTEXT.md files are skipped */ }
+  return files.filter((f) => fs.existsSync(f));
+}
+
+function planStatusLine(text) {
+  const m = text.match(/^Session:[^\r\n]*$/m);
+  return m ? m[0] : null;
+}
+
+// Open plans that look finished: Status says done, or every Deliverables checkbox is ticked.
+function plansReadyToClose(ctx) {
+  const dir = path.join(ctx.arch, "plans");
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir).filter((f) => /^\d{4}-\d{2}-\d{2}-.+\.md$/.test(f)).filter((f) => {
+    const text = fs.readFileSync(path.join(dir, f), "utf8");
+    const sl = planStatusLine(text);
+    if (sl && /Status:\s*(done|complete|completed|implemented)\b/i.test(sl)) return true;
+    const m = text.match(/^## Deliverables[^\n]*\n([\s\S]*?)(?=^## |(?![\s\S]))/m);
+    return !!m && /^\s*- \[x\]/im.test(m[1]) && !/^\s*- \[ \]/m.test(m[1]);
+  });
 }
 
 function cmdCheck(ctx) {
   let problems = 0;
   const say = (m) => { problems++; ctx.report(m); };
+  const advise = [];
   const guard = (fn) => { try { fn(); } catch (e) { if (e instanceof Refusal) say(e.message); else throw e; } };
 
   guard(() => loadStore(ctx));
   archiveFiles(ctx).forEach((f) => guard(() => loadArchive(f)));
 
-  const dDir = path.join(ctx.arch, "plans", "decision-history");
-  if (fs.existsSync(dDir)) {
-    const required = ["Problem", "Options considered", "Decision", "Why not the alternatives", "Next step"];
-    const files = fs.readdirSync(dDir).filter((f) => /^\d{3}-.*\.md$/.test(f));
-    files.forEach((f) => {
-      const text = fs.readFileSync(path.join(dDir, f), "utf8");
-      required.forEach((sec) => {
-        if (!new RegExp(`^## ${sec}\\r?$`, "m").test(text)) say(`plans/decision-history/${f}: missing "## ${sec}"`);
-      });
-    });
-    const indexFile = path.join(dDir, "index.md");
-    if (!fs.existsSync(indexFile)) { if (files.length) say("plans/decision-history/index.md: missing"); }
-    else {
-      const indexText = fs.readFileSync(indexFile, "utf8");
-      if (indexText.includes(INDEX_PLACEHOLDER)) say("plans/decision-history/index.md: a line still holds the placeholder summary");
-      const linked = [...indexText.matchAll(/^- \[[^\]]*\]\(([^)]+\.md)\)/gm)].map((m) => m[1]);
-      files.forEach((f) => { if (!linked.includes(f)) say(`plans/decision-history/index.md: no line for ${f}`); });
-      linked.forEach((f) => { if (!fs.existsSync(path.join(dDir, f))) say(`plans/decision-history/index.md: line for missing file ${f}`); });
+  // Decision headings are suggestions. Only the Linked from: line is expected.
+  const decisions = decisionFiles(ctx);
+  decisions.forEach(({ name, file, abs }) => {
+    if (!/^Linked from:/m.test(fs.readFileSync(abs, "utf8"))) advise.push("plans/" + name + "/" + file + ": no Linked from: line");
+  });
+
+  // Advisory findings. Only for repos that use the store, so repos without items.yaml stay a no-op.
+  if (fs.existsSync(path.join(ctx.arch, "items.yaml"))) {
+    const old = OLD_LAYOUT.filter((p) => fs.existsSync(path.join(ctx.arch, p)));
+    if (old.length) advise.push("old layout (" + old.map((p) => p + "/").join(", ") + "): migrate when convenient, see references/legacy-migration.md");
+
+    const current = decisions.filter((d) => d.name === DECISION_DIRS[0]);
+    if (current.length) {
+      const docs = readPathDocs(ctx).map((f) => fs.readFileSync(f, "utf8"));
+      const unlinked = current.filter((d) => !docs.some((t) => t.includes(d.file))).map((d) => d.file);
+      if (unlinked.length) advise.push("decision files no read-path doc links (link each from the doc it explains, or delete): " + unlinked.join(", "));
+    }
+
+    const plansDir = path.join(ctx.arch, "plans");
+    if (fs.existsSync(plansDir)) {
+      const entries = fs.readdirSync(plansDir, { withFileTypes: true });
+      const isPlan = (e) => e.isFile() && /^\d{4}-\d{2}-\d{2}-.+\.md$/.test(e.name);
+      const knownDirs = PLAN_ARCHIVES.concat(DECISION_DIRS, ["decisions"]);
+      const done = plansReadyToClose(ctx);
+      if (done.length) advise.push("open plans that look finished (fold out, then close-plan): " + done.join(", "));
+      const stray = entries.filter((e) => !isPlan(e) && !(e.isDirectory() && knownDirs.includes(e.name))).map((e) => e.name + (e.isDirectory() ? "/" : ""));
+      if (stray.length) advise.push("not plans, in plans/ root (move next to what they describe): " + stray.join(", "));
     }
   }
-  ctx.report(problems ? `${problems} problem${problems === 1 ? "" : "s"} -- fix by hand; this script will not rewrite them` : "all managed files conform");
+
+  ctx.report(problems ? problems + " problem" + (problems === 1 ? "" : "s") + " -- fix by hand; this script will not rewrite them" : "all managed files conform");
+  advise.forEach((m) => ctx.report("advisory: " + m));
 }
 
 function cmdNewDecision(ctx, [name]) {
   if (!name) refuse("new-decision", "needs a title");
-  const dir = path.join(ctx.arch, "plans", "decision-history");
-  const used = fs.existsSync(dir)
-    ? fs.readdirSync(dir).map((f) => parseInt((f.match(/^(\d{3})-/) || [])[1], 10)).filter(Number.isInteger)
-    : [];
+  const dir = path.join(ctx.arch, "plans", DECISION_DIRS[0]);
+  const used = decisionFiles(ctx).map((d) => parseInt(d.file.slice(0, 3), 10)).filter(Number.isInteger);
   const n = String((used.length ? Math.max(...used) : 0) + 1).padStart(3, "0");
-  const name_ = `${n}-${slugify(name)}.md`;
+  const name_ = n + "-" + slugify(name) + ".md";
   const body = template("decision-record.md")
-    .replace("# Decision NNN — <Title>", `# Decision ${n} — ${name}`)
-    .replace("Date: DD-MM-YYYY HH:MM", `Date: ${nowEuro()}`);
+    .replace("# Decision NNN — <Title>", "# Decision " + n + " — " + name)
+    .replace("Date: DD-MM-YYYY HH:MM", "Date: " + nowEuro());
   ctx.write(path.join(dir, name_), body);
-
-  const indexFile = path.join(dir, "index.md");
-  const header = "# Decision history\n\nBackground on why rules exist. Not rules. Open a file only when a doc cites it or the user asks why.\n\n";
-  const existing = fs.existsSync(indexFile) ? fs.readFileSync(indexFile, "utf8") : header;
-  const eol = existing.includes("\r\n") ? "\r\n" : "\n";
-  ctx.write(indexFile, `${existing.replace(/(\r?\n)*$/, eol)}- [${n} ${name}](${name_}): ${INDEX_PLACEHOLDER}${eol}`);
-  ctx.report(`created plans/decision-history/${name_} and listed it in index.md -- write its one-line summary there`);
+  ctx.report("created plans/" + DECISION_DIRS[0] + "/" + name_ + ". Fill in its Linked from: line and link it from that doc.");
 }
 
 function cmdNewPlan(ctx, [topic]) {
@@ -803,6 +916,34 @@ function cmdNewPlan(ctx, [topic]) {
     .replace("Session: DD-MM-YYYY HH:MM.", `Session: ${nowEuro()}.`);
   ctx.write(file, body);
   ctx.report(`created plans/${path.basename(file)}`);
+}
+
+// Sets Status: done and moves the plan to plans/archived-plans/. No other edit.
+function cmdClosePlan(ctx, [file]) {
+  if (!file) refuse("close-plan", "needs a plan file, e.g. close-plan 2026-10-09-topic.md");
+  const plansDir = path.join(ctx.arch, "plans");
+  const candidates = [path.resolve(file), path.join(ctx.root, file), path.join(plansDir, file), path.join(plansDir, path.basename(file))];
+  const abs = candidates.find((f) => fs.existsSync(f) && fs.statSync(f).isFile());
+  if (!abs) refuse("close-plan", file + " not found (looked in " + rel(ctx.root, plansDir) + "/)");
+  if (path.dirname(abs) !== plansDir) refuse("close-plan", rel(ctx.root, abs) + " is not directly under " + rel(ctx.root, plansDir) + "/ (already archived?)");
+  const dest = path.join(plansDir, PLAN_ARCHIVES[0], path.basename(abs));
+  if (fs.existsSync(dest)) refuse("close-plan", rel(ctx.root, dest) + " already exists");
+
+  const text = fs.readFileSync(abs, "utf8");
+  const sl = planStatusLine(text);
+  if (!sl) refuse("close-plan", path.basename(abs) + " has no \"Session: ... Status: ...\" line to update");
+  const newLine = /Status:/.test(sl) ? sl.replace(/Status:.*$/, "Status: done.") : sl.replace(/\s*$/, "") + " Status: done.";
+  const out = text.replace(sl, () => newLine);
+
+  const m = out.replace(/\r\n/g, "\n").match(/^## Fold-out[ \t]*\n([\s\S]*?)(?=^## |(?![\s\S]))/m);
+  const foldBody = m ? m[1].replace(/<!--[\s\S]*?-->/g, "").trim() : "";
+  const warn = !m ? "has no Fold-out section" : !foldBody || /^<Each durable outcome/.test(foldBody) ? "has an empty Fold-out section" : null;
+
+  ctx.write(dest, out);
+  if (!ctx.dryRun) fs.unlinkSync(abs);
+  ctx.report("closed plans/" + path.basename(abs) + " -> plans/" + PLAN_ARCHIVES[0] + "/" + path.basename(abs) + " (Status: done)");
+  if (warn) ctx.report("warning: the plan " + warn + ". Each durable outcome should be in a read-path doc (ARCHITECTURE.md, CONTEXT.md, AGENTS.md, README.md), or Fold-out says \"none: <reason>\".");
+  ctx.report("next: done the plan's item with the body \"Implemented, plan moved to plans/" + PLAN_ARCHIVES[0] + "/" + path.basename(abs) + "\".");
 }
 
 // ---------------------------------------------------------------------- main
@@ -824,17 +965,19 @@ const COMMANDS = {
   stale: cmdStale,
   check: cmdCheck,
   sweep: cmdSweep,
+  nudge: cmdNudge,
   hooks: cmdHooks,
   "new-decision": cmdNewDecision,
   "new-plan": cmdNewPlan,
+  "close-plan": cmdClosePlan,
 };
 
-const BOOLEAN_FLAGS = ["private", "dry-run", "first", "archived", "gate", "ack", "print"];
+const BOOLEAN_FLAGS = ["private", "dry-run", "first", "archived", "ack", "print", "start"];
 
 function main(argv) {
   const cmd = argv[0];
   if (!cmd || cmd === "--help" || cmd === "-h" || !COMMANDS[cmd]) {
-    const usage = fs.readFileSync(__filename, "utf8").split("\n").slice(4, 24).map((l) => l.replace(/^\/\/ ?/, "")).join("\n");
+    const usage = fs.readFileSync(__filename, "utf8").split("\n").slice(3, 25).map((l) => l.replace(/^\/\/ ?/, "")).join("\n");
     console.log(usage);
     process.exit(cmd && !COMMANDS[cmd] ? 1 : 0);
   }

@@ -1,17 +1,17 @@
 {
   "//": "Merge into ~/.claude/settings.json (every repo; the hooks stay silent in repos without items.yaml) or a repo's .claude/settings.json. Do not replace the file. No SubagentStop: subagents do not own the working set.",
   "hooks": {
-    "Stop": [
+    "PreCompact": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"$HOME/.agents/skills/jookoi-paper-trail/hooks/doc-gate.sh\""
+            "command": "sh \"$HOME/.agents/skills/jookoi-paper-trail/hooks/preserve.sh\""
           }
         ]
       }
     ],
-    "PreCompact": [
+    "SessionEnd": [
       {
         "hooks": [
           {
@@ -31,6 +31,17 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$HOME/.agents/skills/jookoi-paper-trail/hooks/nudge.sh\""
+          }
+        ]
+      }
     ]
-  }
+  },
+  "//nudge": "Stop runs nudge.sh: a reminder at most once per session, silent unless work went unrecorded or a plan looks finished. If an older merge added a Stop entry running doc-gate.sh, replace it with this one."
 }

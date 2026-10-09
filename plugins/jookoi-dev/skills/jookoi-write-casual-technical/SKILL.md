@@ -1,90 +1,108 @@
 ---
 name: jookoi-write-casual-technical
-description: Anti-AI-slop writing style for docs, README, SKILL.md, plans, architecture. Direct, concise, no fluff or padding.
+description: Use whenever creating or editing technical documentation as a .md file (README, docs, SKILL.md, architecture notes, plans) that is not itself a reply to a person or non-technical text. Trigger even if the user hasn't asked for a writing-style check. For chat replies or people-facing text, prefer jookoi-write-like-a-person when it's installed.
 metadata:
-  last_updated: "2026-09-23T00:00:00Z"
   author: Joosep Kõivistik
   repository: https://github.com/equilerex/jookoi-ai-market
+  last_updated: "2026-10-09T23:48:31Z"
 ---
 
-# Casual technical writing & Communication Directive
+# Developer docs writing
 
-This skill governs the generation of text content, sentence structure, cognitive workflow, and style to ensure output reads like an experienced human software engineer or technical writer. It actively encourages clean, scannable formatting when warranted, professional explanation mechanics, and absolute candor, while strictly regulating language to eliminate AI behavioral patterns.
+Write docs any developer can scan in 30 seconds and act on, including neurodivergent / ADHD readers. Short, structured, direct. Not essay prose, not AI filler.
 
----
+> [!IMPORTANT]
+> The reader is a scanner, not a reader. They skim headings, bullets, code and bold words. Anything buried in a long sentence is lost.
 
-## 1. Cognitive Workflow, Candor, and Truth Over Comfort
+Load `jookoi-md-design` alongside this skill. That one owns layout and components. This one owns the words.
 
-*   **Synthesize Before Writing:** Read the full prompt before answering. Merge overlapping points and organize related information together rather than responding mechanically point by point. Synthesize only to avoid repetition, not to add padding.
-*   **Deliver the Complete Answer Immediately:** Be concise by default. Stop when the question has been answered. Add caveats or edge cases only if they materially change the answer.
-*   **Maximize Signal Density:** Prioritize explanatory value over completeness. Do not expand secondary points just because they are relevant. Do not over-explain basics or spell out obvious implications. Assume the reader's level of technical knowledge from the context. Do not explain standard concepts to an expert audience unless needed.
-*   **Absolute Candor (No Yes-Man Behavior):** Never manufacture praise, enthusiasm, agreement, or emotional validation. Do not distort conclusions, omit relevant criticism, invent concessions, or soften substantive corrections merely to make them more agreeable. Professional tact is acceptable only when it does not change or obscure the substance.
-*   **Challenge Premises and Reasoning:** Distinguish facts from assumptions. Admit uncertainty. Challenge incorrect premises directly. Do not infer or validate what answer you think the user wants; follow the available evidence and reasoning strictly. If evidence contradicts the user's framing or position, state so plainly without weakening the conclusion.
+## Contents
 
----
+- [Default shape](#default-shape)
+- [Kill the yapping](#kill-the-yapping)
+- [Make it visual](#make-it-visual)
+- [Tone](#tone)
+- [Before and after](#before-and-after)
+- [Self-check](#self-check)
 
-## 2. Professional Explanation & Documentation Mechanics
+## Default shape
 
-To build exceptional technical and general writing, structure explanations using core engineering principles:
-*   **Separate Context from Instructions:** Clearly distinguish between background rationale (why a decision or architecture exists) and actionable steps (how to implement or execute it). Do not conflate context with mechanics.
-*   **Progressive Disclosure:** Present the core conclusion, system behavior, or direct answer first. Layer in edge cases, context, or sub-mechanics only as needed.
-*   **Concrete over Abstract:** Ground abstract concepts with real-world examples, actual parameter values, or concrete scenarios when they materially improve understanding. Avoid theoretical hand-waving.
-*   **Strict Terminology Consistency:** Use exact technical names and nouns consistently. Never rename the same concept for stylistic variety. If a component is called `OrderRepository`, do not later call it the "order store" or "persistence service" unless those are actually different concepts.
+Structure first, prose last. Reach for prose only when a list or table can't carry the idea.
 
----
+| Content | Write it as |
+|---|---|
+| What this is | 1 to 2 sentences under the H1 |
+| Steps | Numbered list, one action per step |
+| Facts, rules, options | Bullets, one idea each |
+| Comparison | Table |
+| Command, config, path | Code block or backticks |
+| Must-not-miss gotcha | `> [!WARNING]` callout |
+| Rationale most readers skip | `<details>` or a linked file |
 
-## 3. Suppression of Assistant Conversational Padding
+- 🎯 Answer first. Point, current state or command on the first screen.
+- ✂️ One idea per bullet. Two ideas, two bullets.
+- 📏 Paragraphs max 3 lines. Longer means split or convert to a list.
+- 🧱 Break every screen. Heading, table, code block or callout. Never two paragraphs in a row.
 
-Strip out all automatic assistant politeness and conversational framing:
-*   **No Prefatory Willingness:** Never start responses with phrases like *"I’d be happy to help you with that"* or *"Here is what you need..."*. Start directly with the answer.
-*   **No Closing Offers:** Never append closing fluff like *"Let me know if you need anything else"* or *"Feel free to ask"*. Stop writing immediately when the point has been made.
-*   **No Empty Framing Clauses:** Avoid filler clauses that add no technical signal, such as *"It's worth noting that..."*, *"One could argue..."*, or *"It should be considered..."*. State claims directly.
+## Kill the yapping
 
----
+The failure mode: human-sounding prose that takes four clauses to say one thing.
 
-## 4. Core Directives for Wording and Intent
+- **Sentences short.** Aim under 20 words. A sentence with a comma chain or "which means that" gets split.
+- **Fragments are fine.** "Runs on save. No config needed." beats a full sentence explaining both.
+- **No narration.** Don't walk the reader through your reasoning. State the result.
+- **No setup sentences.** Cut "This section explains...", "In order to understand X, we first need...". The heading already says it.
+- **No restating.** A point made once in a bullet does not come back as a closing paragraph.
+- **Why, in one line.** Rationale gets one line ("Postgres, not SQLite: needs concurrent writers"). Deeper reasoning goes in `<details>` or a linked doc.
+- **Cut, then cut again.** Delete any sentence the reader could lose without missing a fact they'd act on.
 
-*   **Prioritize Directness over Resonance:** State facts and requirements flatly. Do not attempt to frame mundane points as monumental cultural shifts or systemic milestones.
-*   **Prefer Simple Verbs:** Use direct verbs ("is", "has", "uses", "writes", "runs") instead of inflated alternatives ("serves as", "functions as", "features", "holds the distinction of being").
-*   **Drop Participial Padding:** Avoid trailing `-ing` clauses that merely restate a consequence or manufacture analytical depth. Keep them when they add concrete, necessary information.
-*   **Avoid Manufactured Contrasts:** Do not default to negative parallelisms (`not only X, but also Y`, `it isn't just X, it's Y`) to manufacture dramatic emphasis. Use contrast only when the distinction materially matters.
-*   **Resist the Triad:** Do not force ideas, examples, or adjectives into groups of three for rhetorical rhythm. Use the number the subject actually requires.
+## Make it visual
 
----
+Raw text is tiring and repetitive to look at. Visual anchors make scanning possible.
 
-## 5. No Figurative Framing
+- **Emojis are welcome** as anchors at the start of bullets, callouts and table cells: ✅ ❌ ⚠️ 💡 🎯 🔧 📁. Looking a bit AI-made is fine when it helps the result.
+  - Use them to mark meaning (good/bad, warning, tip), not to decorate every line.
+  - Not in headings. They break anchor links.
+- **Bold the one word** a scanner should catch per bullet or paragraph. Not whole sentences.
+- **Tables over parallel paragraphs.** Three things described the same way are a table.
+- **Code blocks for anything copyable.** Commands, config, paths, output.
+- **Callouts** (`[!TIP]`, `[!WARNING]`) for the one or two things per section that must not be missed.
+- **Whitespace.** Blank lines around every block. `---` between big parts of a long file.
 
-*   **Strictly Prohibit Decorative Metaphors:** Do not use metaphors, imagery, idioms, or figurative framing to embellish technical explanations. Explain the actual mechanism directly.
-*   **The Strict Analogy Test:** State the mechanism directly whenever that is reasonably clear. Use an analogy only when it materially improves understanding of a concept that would otherwise require substantially more explanation.
+Agent-facing files (SKILL.md, context, plans): same rules, but skip decorative HTML and images. Emojis as anchors are fine.
 
----
+## Tone
 
-## 6. Vocabulary & Lexical Constraints
+- 🗣️ Plain and direct. Like a senior dev's notes, not a blog post.
+- 🚫 No padding: no "It's worth noting", "Additionally", "In order to", no opening or closing pleasantries.
+- 🚫 No AI vocabulary: delve, pivotal, robust, seamless, leverage, foster, showcase, empower, unlock.
+- 🚫 No hype or metaphors. Explain the mechanism.
+- 🔤 Simple verbs: "is, has, uses, runs", not "serves as, functions as, features".
+- 🏷️ One name per concept. `OrderRepository` stays `OrderRepository`, never "the order store" later.
+- 🧾 Concrete over abstract. Real values, real commands, real file names.
+- ⚖️ Candor. State facts and problems plainly. Don't soften, don't hype, say when something is unknown.
+- ✍️ No em dashes, no semicolons. Use a period, comma, colon or parentheses.
 
-*   **Strictly Avoid AI Buzzwords:** Do not use stereotypical AI filler such as *delve, tapestry, pivotal, underscore, foster, intricate, testament, vibrant, meticulous, garner, bolster,* or *showcase* when simpler wording expresses the same meaning. Do not replace legitimate technical terminology merely because the same word is also commonly abused as AI or corporate filler.
-*   **Eliminate Inflated Transitions:** Avoid sentence-initial fluff like *Additionally*, *Furthermore*, or *It is important to note that*. Start sentences with the subject or the action.
-*   **Strip Corporate Puffery:** Avoid terms like *nestled, breathtaking, seamlessly connecting, value-driven, empowering, unlocking,* or *state-of-the-art*.
-*   **Style Rules:** Avoid decorative or performative phrasing. Follow the thought rather than polishing it into a writing template. Avoid canned framing, signposting, formulaic contrasts, forced balance, generic qualifications, repeated summaries, and significance inflation.
+## Before and after
 
----
+❌ Yappy:
 
-## 7. Shape, Size, and Density of Content
+> The cache layer is designed to sit between the API and the database, which means that whenever a request comes in, it will first check whether the data is already available in the cache before falling back to the database, and this significantly reduces latency for frequently accessed records.
 
-*   **Reading Fatigue Is the Default Risk:** Assume it in every reply or document, always, not as a mode switched on for general-audience content specifically. Write with that in mind by instinct.
-*   **Concise Execution:** Keep explanations tight. If a concept can be explained in one sentence, do not expand it into a paragraph of padding.
-*   **Cut Secondary Detail Hard:** Edge cases and caveats earn their place only when they change what the reader does next. Covering 80% and getting read beats covering 100% and getting abandoned halfway.
-*   **Judgment, Not a Counting Rule:** This is guidance, not a mechanical constraint. Do not force sentence-per-idea or paragraph-per-concept splits where they would chop up a natural thought or make prose choppier than the content warrants. The goal is a reader not getting worn out, not compliance with a counting rule.
-*   **Asymmetric Structure:** Do not force sections into symmetrical lengths or predictable templates. Let the technical topic dictate the shape of the text.
-*   **No Canned Conclusions:** Never wrap up documents, responses, or sections with a mandatory summary or a formulaic recap.
+✅ Scannable:
 
----
+> **Cache** sits between API and DB.
+>
+> - Request checks cache first, falls back to DB on miss.
+> - 💡 Cuts latency for hot records.
 
-## 8. Structural Formatting & Layout Standards
+## Self-check
 
-Formatting and whitespace are essential tools for clarity, but they must serve the content rather than create visual noise:
+Read the file as a scanner: headings, first words of bullets, bold, code only.
 
-*   **Scannable Layout:** Use clean markdown hierarchy (`##`, `###`), structured lists, tables, and spacing when they materially improve navigation or comprehension.
-*   **Avoid Over-Formatting:** Do not introduce complex structure or lists merely to make a short answer look organized. Short answers should remain plain paragraphs.
-*   **Code and Inline Elements:** Use backticks for code identifiers, file paths, parameters, and exact CLI commands.
-*   **Avoid Repetitive Formatting Patterns:** Do not mechanically copy-paste bold label formats across every single list item unless the labels genuinely aid scanning. Keep layout natural and intentional.
- 
+- [ ] First screen says what this is or what to do.
+- [ ] No paragraph over 3 lines. No two paragraphs in a row.
+- [ ] No sentence that could be a bullet, no bullet that could be a table row.
+- [ ] Every screen has a visual anchor: table, code, callout, list.
+- [ ] Rationale is one line or tucked away.
+- [ ] Nothing said twice. No closing recap.

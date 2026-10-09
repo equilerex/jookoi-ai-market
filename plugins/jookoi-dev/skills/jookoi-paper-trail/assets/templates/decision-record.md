@@ -4,18 +4,15 @@ Date: DD-MM-YYYY HH:MM
 
 Status: DECIDED
 
-<!-- Status is one of: DECIDED | TRIAL | REJECTED | DEFERRED | SUPERSEDED
-     A superseding decision gets its own number. The superseded file's status changes
-     and its body gains a pointer. A decision already stated in ARCHITECTURE.md or
-     AGENTS.md is folded in and the file deleted instead.
-     All five sections below are required. -->
+Linked from: <the read-path doc whose rule this explains>
+
+<!-- A footnote to that rule, not a rule. Write only what a reader asking "why?" needs: the
+     problem, what was picked, what was turned down and why. Use the headings that help, drop
+     the rest. Status: DECIDED, TRIAL, REJECTED, DEFERRED or SUPERSEDED.
+     Example: references/examples.md. Delete this comment. -->
 
 ## Problem
-
-## Options considered
 
 ## Decision
 
 ## Why not the alternatives
-
-## Next step

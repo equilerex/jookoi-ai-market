@@ -1,10 +1,10 @@
 #!/bin/sh
-# jookoi-paper-trail — preserve before compaction.
-# Claude Code: PreCompact. Gemini CLI: PreCompress. Copilot CLI: n/a.
+# jookoi-paper-trail — preserve before compaction and at session end.
+# Claude Code: PreCompact, SessionEnd. Gemini CLI: PreCompress, SessionEnd. Copilot CLI: sessionEnd.
 # Spec: ../references/hooks.md
 #
-# PreCompact gets the entire uncompacted transcript on stdin and cannot inject
-# anything back. Its only job is getting to disk what compaction discards.
+# These events cannot inject anything back. The job is getting to disk what compaction
+# or the end of the session discards.
 
 . "$(dirname -- "$0")/_common.sh"
 
@@ -14,7 +14,7 @@ LOG="$PRIV/session-log.md"
 [ -f "$LOG" ] || printf '# Session log — raw, undrained\n<!-- Written by preserve.sh. Not a pipeline stage: read it, route what matters, clear it. -->\n' > "$LOG"
 
 {
-  printf '\n## %s — pre-compaction snapshot\n\n' "$(date +%Y-%m-%d)"
+  printf '\n## %s — session snapshot\n\n' "$(date +%Y-%m-%d)"
   printf 'Time: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   printf 'Branch: %s\n' "$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || printf 'unknown')"
   printf 'Session: %s\n\n' "$(field session_id)"

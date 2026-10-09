@@ -17,6 +17,7 @@ Personal plugin marketplace, an optional extension layer on top of [`JooKoi-deve
 | [`jookoi-angular-performance`](plugins/jookoi-dev/skills/jookoi-angular-performance/SKILL.md) | Audits and fixes Angular app performance: bundle budgets, lazy routes, `@defer`, images, OnPush/signals/zoneless, SSR/hydration, Core Web Vitals. Ships a zero-dependency static audit script. Baseline Angular 22, see its [README](plugins/jookoi-dev/skills/jookoi-angular-performance/README.md) for provenance. | Without it, "optimize this" gets OnPush sprinkled everywhere regardless of the real bottleneck, and APIs recommended by stale names. |
 | [`jookoi-plan-review`](plugins/jookoi-dev/skills/jookoi-plan-review/SKILL.md) | Reviews an LLM-written feature implementation plan before coding: checks it against the codebase and reports blockers, gaps, and risks. | Plans that read well still break on real code. Catching it before implementation avoids wasted work. |
 | [`jookoi-fastled`](plugins/jookoi-dev/skills/jookoi-fastled/SKILL.md) | Writing LED animations with FastLED that look good to a human, plus the filter chain for audio-reactive effects. See its [README](plugins/jookoi-dev/skills/jookoi-fastled/README.md) for provenance. | LED effect code generated without it is reliably ugly: full white, every pixel at saturation 255, `delay()` in the loop. None of those are API errors, so nothing catches them. |
+| [`jookoi-agents-md-expert`](plugins/jookoi-dev/skills/jookoi-agents-md-expert/SKILL.md) | Write, extend, audit or trim always-loaded agent instruction files (AGENTS.md, CLAUDE.md, GEMINI.md, copilot-instructions.md). | Keeps agent instructions concise, effective, and correctly scoped instead of becoming a dumping ground. |
 
 ## Structure
 
@@ -34,7 +35,8 @@ plugins/
         ├── jookoi-vue3-vibe-code/         # for fast prototypes with html, js and cdn.
         ├── jookoi-fastled/                # Led animation framework usage instructions to build aestetically pleasing effects
         ├── jookoi-angular-performance/    # Angular perf audit: measure, fix by symptom, version-aware
-        └── jookoi-plan-review/            # review an LLM-written implementation plan against the codebase before coding
+        ├── jookoi-plan-review/            # review an LLM-written implementation plan against the codebase before coding
+        └── jookoi-agents-md-expert/       # expert in writing, auditing and maintaining always-loaded agent instruction files
 ```
 
 `jookoi-dev` groups related capability areas (writing conventions, memory system, framework-specific vibe-coding) under one installable plugin. A capability gets split into its own plugin only when it needs independent distribution, versioning, or audience, not by default.
@@ -71,6 +73,7 @@ gemini skills install https://github.com/equilerex/jookoi-ai-market --path plugi
 gemini skills install https://github.com/equilerex/jookoi-ai-market --path plugins/jookoi-dev/skills/jookoi-fastled --consent
 gemini skills install https://github.com/equilerex/jookoi-ai-market --path plugins/jookoi-dev/skills/jookoi-angular-performance --consent
 gemini skills install https://github.com/equilerex/jookoi-ai-market --path plugins/jookoi-dev/skills/jookoi-plan-review --consent
+gemini skills install https://github.com/equilerex/jookoi-ai-market --path plugins/jookoi-dev/skills/jookoi-agents-md-expert --consent
 ```
 
 **Any other `SKILL.md`-reading harness:**

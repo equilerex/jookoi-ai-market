@@ -1,14 +1,13 @@
 {
   "//": "Merge into the repo's hooks.json for GitHub Copilot CLI.",
-  "//compaction": "Copilot CLI has no automatic compaction loop, so preserve.sh has no event to bind to here. It can still be run by hand before a long session ends.",
-  "//blocking": "Whether Stop honours a blocking decision is unverified. doc-gate.sh degrades to a written reminder surfaced by the next onSessionStart.",
+  "//compaction": "Copilot CLI has no automatic compaction loop in this config, so preserve.sh is bound to sessionEnd only.",
   "hooks": {
-    "Stop": [
+    "sessionEnd": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"$HOME/.agents/skills/jookoi-paper-trail/hooks/doc-gate.sh\""
+            "command": "sh \"$HOME/.agents/skills/jookoi-paper-trail/hooks/preserve.sh\""
           }
         ]
       }
@@ -22,6 +21,17 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$HOME/.agents/skills/jookoi-paper-trail/hooks/nudge.sh\""
+          }
+        ]
+      }
     ]
-  }
+  },
+  "//nudge": "Stop runs nudge.sh, at most once per session. Whether Copilot honours a blocking decision is unverified, so the reminder is sent as context. If an older merge added a Stop entry running doc-gate.sh, replace it with this one."
 }

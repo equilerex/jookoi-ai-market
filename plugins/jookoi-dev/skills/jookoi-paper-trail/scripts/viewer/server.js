@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// jookoi-paper-trail viewer: local web page over items.yaml and archive/items-*.yaml (read, plus adding items via the CLI),
+// jookoi-paper-trail viewer: local web page over items.yaml and archived-items/items-*.yaml, plus the older archive/ (read, plus adding items via the CLI),
 // for every repo that has used the store. No dependencies beyond the vendored js-yaml.
 //
 //   node viewer/server.js                 serve on http://127.0.0.1:4173 (foreground)
@@ -24,6 +24,15 @@ const registry = require("../registry.js");
 const DEFAULT_PORT = 4173;
 const LAYERS = { shared: "_architecture", private: "_jookoi-architecture" };
 const APP = "jookoi-paper-trail-viewer";
+
+// Fingerprint of the server-side code. index.html is read per request, server code is not, so a server
+// started before an update keeps answering with the old API. ensure() compares this and replaces it.
+function buildId() {
+  const h = crypto.createHash("sha1");
+  [__filename, path.join(__dirname, "..", "registry.js")].forEach((f) => { try { h.update(fs.readFileSync(f)); } catch {} });
+  return h.digest("hex").slice(0, 12);
+}
+const BUILD = buildId();
 
 function repoRootOf(dir) {
   try {
@@ -60,15 +69,23 @@ function toItems(map, archivedFrom) {
   }));
 }
 
+// Flushed-item files: archived-items/ (current) and archive/ (older layout), both read.
+function archiveFiles(dir) {
+  const out = [];
+  ["archived-items", "archive"].forEach((name) => {
+    const arch = path.join(dir, name);
+    if (!fs.existsSync(arch)) return;
+    fs.readdirSync(arch).filter((f) => /^items-\d{4}-\d{2}\.yaml$/.test(f)).sort().forEach((f) => out.push(path.join(arch, f)));
+  });
+  return out;
+}
+
 // Signature of the YAML files behind a layer (name, mtime, size). Null when the layer folder is absent.
 function layerSig(root, layer) {
   const dir = path.join(root, LAYERS[layer]);
   if (!fs.existsSync(dir)) return null;
   const files = [path.join(dir, "items.yaml")];
-  const arch = path.join(dir, "archive");
-  if (fs.existsSync(arch)) {
-    fs.readdirSync(arch).filter((f) => /^items-\d{4}-\d{2}\.yaml$/.test(f)).sort().forEach((f) => files.push(path.join(arch, f)));
-  }
+  archiveFiles(dir).forEach((f) => files.push(f));
   return files.map((f) => {
     try { const st = fs.statSync(f); return `${path.basename(f)}:${st.mtimeMs}:${st.size}`; } catch { return `${path.basename(f)}:-`; }
   }).join("|");
@@ -99,13 +116,7 @@ function readLayer(root, layer) {
       out.last_flush = store.last_flush || null;
       out.items = toItems(store.items, null);
     }
-    const arch = path.join(dir, "archive");
-    if (fs.existsSync(arch)) {
-      fs.readdirSync(arch)
-        .filter((f) => /^items-\d{4}-\d{2}\.yaml$/.test(f))
-        .sort()
-        .forEach((f) => out.items.push(...toItems(readYaml(path.join(arch, f)).items, f)));
-    }
+    archiveFiles(dir).forEach((f) => out.items.push(...toItems(readYaml(f).items, path.basename(f))));
   } catch (e) {
     out.error = String(e.message).split("\n")[0];
   }
@@ -118,9 +129,44 @@ function summary(root, i) {
   for (const layer of Object.keys(LAYERS)) {
     const d = layerData(root, layer);
     layers[layer] = !!d;
-    if (d && layer === "shared") now = d.items.filter((it) => it.status === "now" && !it.archived).length;
+    if (d && !d.error) now += d.items.filter((it) => it.status === "now" && !it.archived).length;
   }
   return { index: i, name: path.basename(root), path: root, exists: fs.existsSync(root), layers, now };
+}
+
+// One list for the page: both layers, each item tagged with its layer. IDs are only unique inside one layer.
+function mergedPayload(root) {
+  const sigParts = [];
+  const present = [];
+  for (const layer of Object.keys(LAYERS)) {
+    const sig = layerSig(root, layer);
+    sigParts.push(layer + "=" + (sig === null ? "-" : sig));
+    const d = layerData(root, layer);
+    if (d) present.push([layer, d]);
+  }
+  if (!present.length) return null;
+  const items = [];
+  const errors = [];
+  let repo = path.basename(root).toLowerCase();
+  let last_flush = null;
+  for (const [layer, d] of present) {
+    if (layer === "shared" && d.repo) repo = d.repo;
+    if (d.last_flush && (last_flush === null || d.last_flush > last_flush)) last_flush = d.last_flush;
+    if (d.error) errors.push(layer + ": " + d.error);
+    for (const it of d.items) items.push({ ...it, layer });
+  }
+  const failed = present.every(([, d]) => d.error);
+  return {
+    sig: sigParts.join("||"),
+    data: {
+      layer: "merged",
+      repo,
+      last_flush,
+      items,
+      error: failed ? errors.join("; ") : null,
+      warning: !failed && errors.length ? errors.join("; ") : null,
+    },
+  };
 }
 
 // ---------------------------------------------------------------- http
@@ -171,7 +217,7 @@ function handler(port) {
     if (url.pathname === "/vendor/jookoi-mdx-render.browser.js") {
       return send(res, 200, "text/javascript; charset=utf-8", fs.readFileSync(RENDER_BUNDLE));
     }
-    if (url.pathname === "/api/ping") return send(res, 200, "application/json", JSON.stringify({ app: APP }));
+    if (url.pathname === "/api/ping") return send(res, 200, "application/json", JSON.stringify({ app: APP, build: BUILD, pid: process.pid }));
     if (url.pathname === "/api/repos") {
       return send(res, 200, "application/json", JSON.stringify(registry.read().map((r, i) => summary(r, i))));
     }
@@ -193,12 +239,22 @@ function handler(port) {
     const m = url.pathname.match(/^\/api\/repo\/(\d+)$/);
     if (m) {
       const root = registry.read()[Number(m[1])];
-      const layer = url.searchParams.get("layer") || "shared";
-      if (!root || !LAYERS[layer]) return send(res, 404, "application/json", '{"error":"unknown repo or layer"}');
-      const data = layerData(root, layer);
-      if (!data) return send(res, 404, "application/json", '{"error":"layer not found"}');
+      const requested = url.searchParams.get("layer");
+      // No layer, or layer=merged: both stores in one list. layer=shared|private stays available.
+      if (!root) return send(res, 404, "application/json", '{"error":"unknown repo or layer"}');
+      let data, sig;
+      if (requested && requested !== "merged") {
+        if (!LAYERS[requested]) return send(res, 404, "application/json", '{"error":"unknown repo or layer"}');
+        data = layerData(root, requested);
+        sig = layerSig(root, requested);
+      } else {
+        const merged = mergedPayload(root);
+        data = merged && merged.data;
+        sig = merged && merged.sig;
+      }
+      if (!data || !sig) return send(res, 404, "application/json", '{"error":"layer not found"}');
       // Conditional GET: the client polls this, and an unchanged store answers 304 with no body.
-      const etag = '"' + crypto.createHash("sha1").update(layerSig(root, layer)).digest("hex").slice(0, 16) + '"';
+      const etag = '"' + crypto.createHash("sha1").update(sig).digest("hex").slice(0, 16) + '"';
       const cache = { ETag: etag, "Cache-Control": "no-cache" };
       if (req.headers["if-none-match"] === etag) { res.writeHead(304, cache); return res.end(); }
       return send(res, 200, "application/json", JSON.stringify(data), cache);
@@ -210,15 +266,16 @@ function handler(port) {
 
 // ---------------------------------------------------------------- ensure / open
 
+// Resolves to the viewer's ping payload, or null when the port is free or held by something else.
 function ping(port) {
   return new Promise((resolve) => {
     const req = http.get({ host: "127.0.0.1", port, path: "/api/ping", timeout: 400 }, (res) => {
       let body = "";
       res.on("data", (c) => (body += c));
-      res.on("end", () => { try { resolve(JSON.parse(body).app === APP); } catch { resolve(false); } });
+      res.on("end", () => { try { const j = JSON.parse(body); resolve(j.app === APP ? j : null); } catch { resolve(null); } });
     });
-    req.on("error", () => resolve(false));
-    req.on("timeout", () => { req.destroy(); resolve(false); });
+    req.on("error", () => resolve(null));
+    req.on("timeout", () => { req.destroy(); resolve(null); });
   });
 }
 
@@ -228,13 +285,21 @@ function openBrowser(url) {
 }
 
 // Idempotent and quiet: prints the URL, or nothing and exit code 1 when it cannot be started.
+// A viewer running older code (different build) is stopped and replaced; a pre-build viewer has no pid and is left alone.
 async function ensure(port) {
   const url = `http://127.0.0.1:${port}`;
-  if (await ping(port)) { console.log(url); return true; }
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const running = await ping(port);
+  if (running && (running.build === BUILD || !running.pid)) { console.log(url); return true; }
+  if (running) {
+    try { process.kill(running.pid); } catch {}
+    for (let i = 0; i < 20 && (await ping(port)); i++) await sleep(100);
+  }
   spawn(process.execPath, [__filename, "--port", String(port)], { detached: true, stdio: "ignore", windowsHide: true }).unref();
   for (let i = 0; i < 20; i++) {
-    await new Promise((r) => setTimeout(r, 150));
-    if (await ping(port)) { console.log(url); return true; }
+    await sleep(150);
+    const p = await ping(port);
+    if (p && p.build === BUILD) { console.log(url); return true; }
   }
   process.exitCode = 1;
   return false;

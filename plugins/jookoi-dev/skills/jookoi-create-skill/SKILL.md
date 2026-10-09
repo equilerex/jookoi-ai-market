@@ -1,15 +1,17 @@
 ---
 name: jookoi-create-skill
-description: Create, adapt or review LLM skills (SKILL.md and its bundled files) as portable, host-agnostic workflows. Use when writing a new skill, editing an existing one, or tuning a skill's description or triggering.
+description: Create or adapt a personal, cross-harness agent skill when a reusable workflow belongs in .agents/skills, especially when preserving an existing skill while removing host-specific assumptions.
 license: Apache-2.0
 metadata:
-  last_updated: "2026-09-23T00:00:00Z"
-  author: "Joosep Kõivistik. Modified 2026-09-19 from the Apache-licensed skill-creator: retained its draft, test, review, and iteration workflow; replaced host-bound instructions with portable ones."
+  last_updated: 2026-09-23
+  author: Joosep Kõivistik
   repository: https://github.com/equilerex/jookoi-ai-market
 ---
 
 # Personal skill creator
- 
+
+<!-- Modified 2026-09-19 from the Apache-licensed skill-creator: retained its draft, test, review, and iteration workflow; replaced host-bound instructions with portable ones. -->
+
 Build a skill for a demonstrated need. Start from the user's actual workflow and keep the result small enough that another agent will read it and act correctly. A `SKILL.md` is the portable core. Other files are optional support.
 
 ## Personal defaults
@@ -40,14 +42,7 @@ description: Use when a specific recurring task needs this workflow.
 Instructions that let the agent perform the task.
 ```
 
-The description is for selection: say when the skill applies and where its boundary is. It is the only part of the skill the model sees before deciding to load it, so it decides whether the skill runs at all. No conversational padding. How long it should be depends on how the skill gets invoked:
-
-- **Invoked on request** (the user names the task or types the slash command): one or two sentences. Extra words cost tokens in every conversation and buy nothing.
-- **Must trigger on its own mid-task** (the model has to notice an event and act, as in documentation, memory, style or safety skills): list the events that should trigger it and the phrasings users actually say, and state why it matters, up to the 1024-character limit. A short description here gets the skill loaded once at session start, if at all, and never again.
-
-Evidence: `jookoi-paper-trail` v1 had an event-triggered description ("use whenever something durable just happened", with trigger phrasings and "match on intent") and was invoked reliably throughout sessions. In the v2 refactor it was cut to one line for token savings, and after that, trial sessions loaded it once, set it up, and stopped recording. Restoring the event-triggered description was the fix. At about 200 tokens per long description, the saving is not worth losing the trigger.
-
-The description must be valid YAML. In an unquoted value, a colon followed by a space (`: `) breaks the frontmatter, and so does ` #`. Rephrase, or quote the whole value. Validate with a real YAML parser, not by eye. Never include angle brackets (< or >) in name or description.
+The description is for selection: say when the skill applies and where its boundary is. It is injected into LLM discovery prompts, so every extra word costs tokens across all conversations. Default to one sentence, two at most, straight to the point, no conversational padding. The exception is a skill that must trigger on its own mid-task (documentation, memory, style, safety): there the description is the only signal that loads it, so list the events and user phrasings that should trigger it, up to the 1024-character limit. Background: `_architecture/plans/archived-decisions/015-skill-descriptions-carry-triggers-not-minimal-token-saving-s.md` in the developer-stack repo. Never include angle brackets (< or >) in name or description.
 
 Frontmatter constraints:
 - `name`: 1 to 64 characters, lowercase alphanumeric and single hyphens (`^[a-z0-9]+(-[a-z0-9]+)*$`), matching the directory name. No consecutive hyphens (`--`). Never use reserved words `claude` or `anthropic`. The directory name cannot be `synced`.
@@ -81,41 +76,27 @@ Report the source location, installed location if different, what changed from t
 ## Personal defaults and verification
 
 - Write project skills to `<repo>/.agents/skills/<name>/SKILL.md`. Write personal skills to the host's configured global skill directory; on this computer that is `C:\Users\Joosep\.agents\skills\<name>\SKILL.md`. The tracked copy in this repository is `my-global-setup/.agents/skills/`; copy it deliberately when installing or updating the personal skill.
-- Resolve the actual repository root before editing. Edit the canonical file directly on the user's machine unless isolation was requested; never silently substitute a temporary workspace.
+- Resolve the actual repository root before editing. Edit the real file directly on the user's machine unless isolation was requested; never silently substitute a temporary workspace.
 - Keep `SKILL.md` portable across harnesses. Put host-specific metadata or invocation behavior in optional adapter files such as `agents/openai.yaml`; check the target host's discovery rules before adding one.
 - Default verification is lightweight: validate frontmatter and `name`/`description`, check every referenced local path, run `scripts/quick_validate.py` when bundled, and read the skill against one realistic trigger and one nearby non-trigger. Do not run prompt suites, grading, or benchmarks unless explicitly requested.
 
 Benchmarking is an explicit mode, never the default. The bundled benchmark scripts, evaluator guidance, and viewer are optional support and should not be loaded in normal creation mode. If benchmarking is requested, include realistic edge and negative cases, isolate the runs from production files, record prompts/actions/artifacts/side effects, and state limits on any comparison. The viewer may use external browser assets, so invoke it only for an explicitly requested evaluation workflow.
-## Personal skill installation topology
+## Where the skill goes
 
-When creating or updating a personal skill, use the discovered shared skill source as the canonical source whenever one is configured. Resolve it from the current machine rather than assuming a username, drive letter, or folder layout:
+Write the skill folder where the user says. Without a stated location, write it to the target repository's `.agents/skills/<name>/`. Create the folder with `SKILL.md` and any bundled files, and report the path it was written to. Do not link, copy or publish it anywhere else. Copying to other folders is a separate step the user asks for later.
 
-- Search the user's global instructions and the target repository instructions first for a declared shared skill source. Only then search configured plugin or marketplace roots for a `plugins/<plugin>/skills/` directory.
-- For this setup, the known examples are `D:\repos\Serenity\jookoi-ai-market\plugins\jookoi-dev\skills\` and `C:\BB\serenity\jookoi-ai-market\plugins\jookoi-dev\skills\`; these are examples, not portable defaults.
+Never overwrite an existing skill silently: inspect it, preserve unrelated files, and report what was replaced.
 
-After writing the canonical `<source>\<name>\` directory, expose it through these targets when they exist or are part of the configured setup:
-
-- `<user>/.agents/skills/<name>/` (the portable default global target)
-- `<user>/.claude/skills/<name>/` (only when that host directory is present or configured)
-- `<repo>/my-global-setup/.agents/skills/<name>/` (only when maintaining a tracked setup mirror)
-- `<repo>/my-global-setup/.claude/skills/<name>/` (only when maintaining a tracked setup mirror)
-
-Prefer directory symlinks to the canonical source. Windows symlink creation may require permission or developer-mode support; if linking fails, make a complete hard copy and report that fallback. Keep tracked setup copies self-contained when the repository's portability or Git workflow makes symlinks unsuitable. Never overwrite an existing skill silently: inspect it, preserve unrelated files, and report whether each target was linked or copied.
-
-The canonical source path is configuration, not part of the skill's portable instructions. If no plugin repository is configured or discoverable, default to the user's global `.agents/skills/<name>/` directory. Add other targets only when they are discoverable and writable, and state which targets were linked or copied.
 ## Scope decision
 
 Use these terms literally:
 
 - **Target repository** is the repository the user is currently asking to modify.
-- **Personal skill** is a skill intended for the user's global agent setup.
-- **Shared skill source** is an optional repository or directory explicitly designated by the user's instructions as the canonical place to publish reusable skills. It may be called a marketplace, plugin repository, catalog, or something else. Do not assume that every user has one.
+- **Personal skill** is a skill the user wants outside the target repository.
 
-Classify the requested skill before choosing destinations:
+Classify the requested skill before choosing a folder:
 
-- **Repository skill**: write to the target repository's `.agents/skills/<name>/`. Do not create global links or copies unless the user also requests personal installation. A repository that happens to support repository-level skills follows this rule.
-- **Personal/global skill**: use the configured shared skill source when one exists; otherwise use the user's global `.agents/skills/<name>/` directory as the canonical source. Add optional host and tracked setup mirrors when configured.
-- **Shared-source skill**: write to the explicitly configured shared skill source. If that source is also a repository the user is actively working in, its own `.agents/skills/` may be maintained as a deliberate mirror. Do not publish to an undiscovered or merely guessed marketplace.
+- **Repository skill**: write to the target repository's `.agents/skills/<name>/`.
+- **Personal skill**: write to the folder the user names. If the user names none, ask for it. Do not guess a global folder.
 
-If the user names a scope, follow it. If they do not, infer from the requested destination and wording; ask only when choosing the wrong scope would create unwanted global files or publish a private skill. Treat words such as “marketplace” or “plugin” as meaningful only when the user or local instructions identify the corresponding path.
-For a personal skill, perform this source-and-target setup as part of the creation task; do not stop after writing `SKILL.md` in only one directory. Use `scripts/sync_personal_skill.py` for the marketplace copy and directory symlinks. Do not recreate that distribution workflow manually with ad hoc copy, move, or link commands. Run the script from the tracked `jookoi-create-skill` package. Report the resolved canonical source and the copy/link result for each target.
+If the user names a scope, follow it.
