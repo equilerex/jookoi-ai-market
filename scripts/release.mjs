@@ -1,11 +1,12 @@
 #!/usr/bin/env node
-// The release procedure for the marketplace. CI runs it on every push (.github/workflows/release.yml).
+// The release procedure for the marketplace. CI runs it on every push to main (.github/workflows/release.yml).
 //
-//   npm run release                  fix metadata, bump changed plugin versions, validate, audit
-//   npm run release -- --commit      also commit the bumped versions and tag each bumped plugin
+//   npm run release                  fix metadata, validate, audit (no version change)
+//   npm run release -- --commit      release: bump every plugin's version, validate, audit, commit, tag
 //   npm run release -- --install     local only: also refresh this machine's Claude Code installs
 //
-// Steps stop at the first failure. This script never pushes; CI pushes.
+// A push is a release: whoever pushes decides a bump is needed. Steps stop at the first failure.
+// This script never pushes; CI pushes.
 
 import fs from 'node:fs'
 import path from 'node:path'
@@ -48,12 +49,25 @@ function pluginVersion(name) {
 const { market, plugins } = marketplaceName()
 const versionsBefore = Object.fromEntries(plugins.map((p) => [p, pluginVersion(p)]))
 
+// Every release bumps every plugin (minor, x.y+1.0). The release itself is the reason for the bump.
+function bumpPlugin(name) {
+  const p = path.join(rootDir, 'plugins', name, '.claude-plugin', 'plugin.json')
+  const raw = fs.readFileSync(p, 'utf8')
+  const [major, minor] = pluginVersion(name).split('.').map(Number)
+  fs.writeFileSync(p, raw.replace(/("version"\s*:\s*")[^"]+(")/, `$1${major}.${minor + 1}.0$2`), 'utf8')
+}
+if (commit) for (const name of plugins) bumpPlugin(name)
+
 // 1. Metadata, version bumps, manifest validation, reference audit. This is the same
 //    script as `npm run update-skills`; it exits non-zero if anything still needs a human.
 run('Fix metadata, bump changed plugin versions, validate manifests, audit references',
   process.execPath, [path.join(rootDir, 'scripts', 'check-marketplace-skills.mjs'), '--update'])
 
 const bumped = plugins.filter((p) => pluginVersion(p) !== versionsBefore[p])
+if (commit && bumped.length === 0) {
+  console.error('Release requested but no plugin version changed.')
+  process.exit(1)
+}
 
 // 2. Claude Code side: register the local marketplace, refresh it, then install or update each plugin.
 if (install) {
@@ -92,5 +106,4 @@ if (commit) {
 
 console.log(`\nRelease finished. Versions: ${plugins.map((p) => `${p} ${pluginVersion(p)}`).join(', ')}`)
 if (bumped.length) console.log(`Bumped: ${bumped.map((p) => `${p} ${versionsBefore[p]} -> ${pluginVersion(p)}`).join(', ')}`)
-else console.log('No plugin changed since its last version. Nothing bumped.')
-if (!commit && bumped.length) console.log('Not committed (no --commit). CI does this on push.')
+if (!commit) console.log('Not released (no --commit). Nothing bumped, committed or tagged.')
