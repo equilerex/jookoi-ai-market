@@ -5,17 +5,15 @@
     "// start": "Interactive setup: choose global skill folders (~/.agents/skills and ~/.claude/skills).",
     "start": "node scripts/setup.mjs",
     "setup": "node scripts/setup.mjs",
-
-    "// claude": "Installs the plugin from this local checkout into Claude Code: registers the marketplace, refreshes it, then installs or updates jookoi-dev@jookoi-ai-market. Bump plugin.json version first.",
-    "claude": "claude plugin marketplace add ./ && claude plugin marketplace update jookoi-ai-market && claude plugin install jookoi-dev@jookoi-ai-market && claude plugin update jookoi-dev@jookoi-ai-market",
-
+    "// claude": "Same as release --install (kept for the old command name).",
+    "claude": "node scripts/release.mjs --install",
     "// sync": "Synchronizes skills on demand using the new skill script.",
     "sync": "node D:/repos/Serenity/JooKoi-developer-stack/utility-scripts/copy-skill.js",
-
     "// sync:force": "Overwrites target copies even when they are newer than this repo.",
     "sync:force": "node D:/repos/Serenity/JooKoi-developer-stack/utility-scripts/copy-skill.js --force",
-
     "// update-skills": "Validates plugin manifests, checks SKILL.md metadata, and re-audits cross-references.",
-    "update-skills": "node scripts/check-marketplace-skills.mjs --update"
+    "update-skills": "node scripts/check-marketplace-skills.mjs --update",
+    "// release": "One command: fix metadata, bump changed plugin versions, validate, audit. --install also refreshes Claude Code; --commit commits locally (never pushes).",
+    "release": "node scripts/release.mjs"
   }
 }
