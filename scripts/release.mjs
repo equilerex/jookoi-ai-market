@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-// One command to ship the marketplace.
+// The release procedure for the marketplace. CI runs it on every push (.github/workflows/release.yml).
 //
 //   npm run release                  fix metadata, bump changed plugin versions, validate, audit
-//   npm run release -- --install     also register/refresh the marketplace and install/update plugins in Claude Code
-//   npm run release -- --commit      also commit the release (no push)
+//   npm run release -- --commit      also commit the bumped versions and tag each bumped plugin
+//   npm run release -- --install     local only: also refresh this machine's Claude Code installs
 //
-// Steps stop at the first failure. Nothing is pushed.
+// Steps stop at the first failure. This script never pushes; CI pushes.
 
 import fs from 'node:fs'
 import path from 'node:path'
@@ -46,11 +46,14 @@ function pluginVersion(name) {
 }
 
 const { market, plugins } = marketplaceName()
+const versionsBefore = Object.fromEntries(plugins.map((p) => [p, pluginVersion(p)]))
 
 // 1. Metadata, version bumps, manifest validation, reference audit. This is the same
 //    script as `npm run update-skills`; it exits non-zero if anything still needs a human.
 run('Fix metadata, bump changed plugin versions, validate manifests, audit references',
   process.execPath, [path.join(rootDir, 'scripts', 'check-marketplace-skills.mjs'), '--update'])
+
+const bumped = plugins.filter((p) => pluginVersion(p) !== versionsBefore[p])
 
 // 2. Claude Code side: register the local marketplace, refresh it, then install or update each plugin.
 if (install) {
@@ -80,8 +83,14 @@ if (commit) {
     run('Stage release files', 'git', ['add', '--', 'plugins', 'README.md', '_architecture', '.claude-plugin'])
     run('Commit release', 'git', ['commit', '-m', message])
   }
+  for (const name of bumped) {
+    const tag = `${name}-v${pluginVersion(name)}`
+    if (git(['rev-parse', '-q', '--verify', `refs/tags/${tag}`]).ok) continue
+    run(`Tag ${tag}`, 'git', ['tag', '-a', tag, '-m', `${name} ${pluginVersion(name)}`])
+  }
 }
 
 console.log(`\nRelease finished. Versions: ${plugins.map((p) => `${p} ${pluginVersion(p)}`).join(', ')}`)
-if (!commit) console.log('Not committed. Re-run with --commit, then push yourself.')
-if (!install) console.log('Claude Code not refreshed. Re-run with --install to update local installs.')
+if (bumped.length) console.log(`Bumped: ${bumped.map((p) => `${p} ${versionsBefore[p]} -> ${pluginVersion(p)}`).join(', ')}`)
+else console.log('No plugin changed since its last version. Nothing bumped.')
+if (!commit && bumped.length) console.log('Not committed (no --commit). CI does this on push.')
