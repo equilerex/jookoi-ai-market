@@ -1,0 +1,46 @@
+# Release on every push. The release procedure is not a manual step.
+# scripts/release.mjs fixes metadata, bumps the version of each plugin that changed,
+# validates the manifests, audits references, commits the bump and tags it.
+# This job then pushes the commit and tags back to the branch.
+# Pushes made with GITHUB_TOKEN do not trigger another run, and the "release:" guard
+# below covers the bump commit anyway, so the workflow cannot loop.
+
+name: release
+
+on:
+  push:
+    branches: [main, release-script]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: ${{ !startsWith(github.event.head_commit.message, 'release:') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Claude Code CLI (for plugin validation)
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Release (bump, validate, audit, commit, tag)
+        run: node scripts/release.mjs --commit
+
+      - name: Push release commit and tags
+        run: git push origin "HEAD:${GITHUB_REF_NAME}" --follow-tags
