@@ -88,4 +88,4 @@ gemini skills install https://github.com/equilerex/jookoi-ai-market --path plugi
 
 - `JooKoi-developer-stack` works standalone, with no knowledge this repo exists.
 - Skills here are copies, not moves. Source of truth for baseline-universal ones (`jookoi-paper-trail`, `jookoi-create-skill`, `jookoi-write-like-a-person`, `jookoi-write-casual-technical`) is `JooKoi-developer-stack/my-global-setup/.agents/skills/`. Updates made there don't auto-propagate here, re-copy by hand when a baseline skill changes and this plugin should pick it up.
-- `jookoi-md-design`, `jookoi-vue3-vibe-code`, `jookoi-fastled`, `jookoi-angular-performance`, and `jookoi-plan-review` are domain-specific, added directly here as this plugin's own content.
+- `jookoi-md-design`, `jookoi-vue3-vibe-code`, `jookoi-fastled`, `jookoi-angular-performance`, `jookoi-plan-review`, and `jookoi-agents-md-expert` are domain-specific, added directly here as this plugin's own content.
