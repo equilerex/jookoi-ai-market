@@ -52,9 +52,15 @@ When adding or updating a skill:
 - Update [_architecture/ARCHITECTURE.md](file:///D:/repos/Serenity/jookoi-ai-market/_architecture/ARCHITECTURE.md) (Layout list).
 - Update [plugins/jookoi-dev/.claude-plugin/plugin.json](file:///D:/repos/Serenity/jookoi-ai-market/plugins/jookoi-dev/.claude-plugin/plugin.json) keywords, description, and version if needed.
 
+## Release
+
+Releasing is not a manual step. `.github/workflows/release.yml` runs `node scripts/release.mjs --commit` on every push to `main` and `release-script`. It bumps the version of each plugin that changed since its last version commit, validates the manifests, audits references, commits the bump, and tags it (`<plugin>-v<version>`). Do not bump versions by hand.
+
+`npm run release` runs the same procedure locally. `npm run release -- --install` also refreshes this machine's Claude Code install. Only use it locally.
+
 ## Verification
 
-Always verify before finishing:
+Before finishing a change, run:
 ```bash
 npm run update-skills
 ```
