@@ -1,6 +1,6 @@
 {
   "name": "jookoi-dev",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "description": "Personal richer developer-tooling ecosystem: paper-trail memory, casual writing conventions, markdown design, personal skill creation, Vue 3 no-build vibe-coding, LED animation with FastLED, Angular performance auditing, implementation plan review, agent instruction file expert, converting app documentation into expert skills, and future domain-specific skills.",
   "author": {
     "name": "Joosep Kõivistik",
