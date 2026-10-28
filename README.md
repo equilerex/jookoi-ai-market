@@ -9,7 +9,7 @@ Personal plugin marketplace, an optional extension layer on top of [`JooKoi-deve
 | Skill | What | Why |
 |---|---|---|
 | [`jookoi-paper-trail`](https://github.com/equilerex/JooKoi-developer-stack/tree/main/my-global-setup/.agents/skills/jookoi-paper-trail) | Writes decisions, plans, and open work into a repo's own `_architecture/` files instead of the chat transcript. Work items live in `items.yaml` (managed by a script), alongside CONTEXT.md, ARCHITECTURE.md, plans, decision history and archive. Includes a local viewer for browsing the store across repos. Full pipeline documented at the link. | Nothing durable gets lost when a session ends or gets compacted. |
-| [`jookoi-create-skill`](plugins/jookoi-dev/skills/jookoi-create-skill/SKILL.md) | Create or adapt personal cross-harness skills for `.agents/skills`, removing host assumptions, packaging, and syncing to targets. | New skills start portable, follow established structure, and get installed or linked across environments without ad hoc manual copies. |
+| [`jookoi-create-skill`](plugins/jookoi-dev/skills/jookoi-create-skill/SKILL.md) | Create, adapt, or validate personal cross-harness skills for `.agents/skills`, removing host assumptions and checking against the Agent Skills spec. | New skills start portable and follow established structure. |
 | [`jookoi-write-like-a-person`](plugins/jookoi-dev/skills/jookoi-write-like-a-person/SKILL.md) | Tone rules for replies and people-facing text: emails, messages, non-technical explanations. Audience-neutral. | Portable across projects, shareable without an engineer-specific voice baked in. |
 | [`jookoi-write-casual-technical`](plugins/jookoi-dev/skills/jookoi-write-casual-technical/SKILL.md) | Tone rules for technical `.md` documentation: README, architecture notes, another SKILL.md. Engineer voice. | Docs read like an engineer wrote them, not an assistant. |
 | [`jookoi-md-design`](plugins/jookoi-dev/skills/jookoi-md-design/SKILL.md) | Design skill for `.md` files: layout, content blocks, spacing and visual flow, with a themed component library (hero, badges, feature grids, callouts, diagrams) and a badge catalogue. Agent-facing files get design through structure only. Pairs with `jookoi-write-casual-technical`, which owns the words. See its [README](plugins/jookoi-dev/skills/jookoi-md-design/README.md) for provenance. | Models write plain markdown fine on their own, but can't design a page: layouts come out as walls of text or a random badge wall. |
@@ -17,6 +17,7 @@ Personal plugin marketplace, an optional extension layer on top of [`JooKoi-deve
 | [`jookoi-angular-performance`](plugins/jookoi-dev/skills/jookoi-angular-performance/SKILL.md) | Audits and fixes Angular app performance: bundle budgets, lazy routes, `@defer`, images, OnPush/signals/zoneless, SSR/hydration, Core Web Vitals. Ships a zero-dependency static audit script. Baseline Angular 22, see its [README](plugins/jookoi-dev/skills/jookoi-angular-performance/README.md) for provenance. | Without it, "optimize this" gets OnPush sprinkled everywhere regardless of the real bottleneck, and APIs recommended by stale names. |
 | [`jookoi-plan-review`](plugins/jookoi-dev/skills/jookoi-plan-review/SKILL.md) | Reviews an LLM-written feature implementation plan before coding: checks it against the codebase and reports blockers, gaps, and risks. | Plans that read well still break on real code. Catching it before implementation avoids wasted work. |
 | [`jookoi-fastled`](plugins/jookoi-dev/skills/jookoi-fastled/SKILL.md) | Writing LED animations with FastLED that look good to a human, plus the filter chain for audio-reactive effects. See its [README](plugins/jookoi-dev/skills/jookoi-fastled/README.md) for provenance. | LED effect code generated without it is reliably ugly: full white, every pixel at saturation 255, `delay()` in the loop. None of those are API errors, so nothing catches them. |
+| [`jookoi-convert-docs-to-skill`](plugins/jookoi-dev/skills/jookoi-convert-docs-to-skill/SKILL.md) | Builds an expert skill for an application or framework from its manual, changelog, forum and a real install: intake checklist, source gathering and polite forum scraping, user-language mapping, design, drafting by subagents, verification on the install, docs and handoff. Bundles the research scripts (PDF extraction, command index, forum fetch and corpus, knowledge-base tools). | A manual pasted into a prompt is huge and organised the wrong way. People ask in their own words, and many questions are bugs or impossible. This turns the docs into a small, tested skill organised around real demand. |
 | [`jookoi-agents-md-expert`](plugins/jookoi-dev/skills/jookoi-agents-md-expert/SKILL.md) | Write, extend, audit or trim always-loaded agent instruction files (AGENTS.md, CLAUDE.md, GEMINI.md, copilot-instructions.md). | Keeps agent instructions concise, effective, and correctly scoped instead of becoming a dumping ground. |
 
 ## Structure
@@ -36,7 +37,8 @@ plugins/
         ├── jookoi-fastled/                # Led animation framework usage instructions to build aestetically pleasing effects
         ├── jookoi-angular-performance/    # Angular perf audit: measure, fix by symptom, version-aware
         ├── jookoi-plan-review/            # review an LLM-written implementation plan against the codebase before coding
-        └── jookoi-agents-md-expert/       # expert in writing, auditing and maintaining always-loaded agent instruction files
+        ├── jookoi-agents-md-expert/       # expert in writing, auditing and maintaining always-loaded agent instruction files
+        ├── jookoi-convert-docs-to-skill/  # turn an app's docs, forum and install into a tested expert skill
 ```
 
 `jookoi-dev` groups related capability areas (writing conventions, memory system, framework-specific vibe-coding) under one installable plugin. A capability gets split into its own plugin only when it needs independent distribution, versioning, or audience, not by default.
@@ -74,6 +76,7 @@ gemini skills install https://github.com/equilerex/jookoi-ai-market --path plugi
 gemini skills install https://github.com/equilerex/jookoi-ai-market --path plugins/jookoi-dev/skills/jookoi-angular-performance --consent
 gemini skills install https://github.com/equilerex/jookoi-ai-market --path plugins/jookoi-dev/skills/jookoi-plan-review --consent
 gemini skills install https://github.com/equilerex/jookoi-ai-market --path plugins/jookoi-dev/skills/jookoi-agents-md-expert --consent
+gemini skills install https://github.com/equilerex/jookoi-ai-market --path plugins/jookoi-dev/skills/jookoi-convert-docs-to-skill --consent
 ```
 
 **Any other `SKILL.md`-reading harness:**
@@ -88,4 +91,3 @@ gemini skills install https://github.com/equilerex/jookoi-ai-market --path plugi
 
 - `JooKoi-developer-stack` works standalone, with no knowledge this repo exists.
 - Skills here are copies, not moves. Source of truth for baseline-universal ones (`jookoi-paper-trail`, `jookoi-create-skill`, `jookoi-write-like-a-person`, `jookoi-write-casual-technical`) is `JooKoi-developer-stack/my-global-setup/.agents/skills/`. Updates made there don't auto-propagate here, re-copy by hand when a baseline skill changes and this plugin should pick it up.
-- `jookoi-md-design`, `jookoi-vue3-vibe-code`, `jookoi-fastled`, `jookoi-angular-performance`, and `jookoi-plan-review` are domain-specific, added directly here as this plugin's own content.

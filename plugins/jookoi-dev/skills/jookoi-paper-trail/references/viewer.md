@@ -15,12 +15,12 @@ The open repo is the `repo` query parameter: `http://127.0.0.1:4173/?repo=Folder
 Any script call in a repo that has an `items.yaml` adds the repo root to `~/.jookoi-paper-trail/repos.json` (`%USERPROFILE%\.jookoi-paper-trail\repos.json` on Windows), a JSON array of absolute paths. Repos under the OS temp folder are skipped. The list survives across sessions and can be edited by hand.
 
 ```
-node ~/.agents/skills/jookoi-paper-trail/scripts/viewer/server.js ensure        # start if needed, print the URL
-node ~/.agents/skills/jookoi-paper-trail/scripts/viewer/server.js ensure --open # and open the browser
-node ~/.agents/skills/jookoi-paper-trail/scripts/viewer/server.js add [path]    # register by hand (default: current repo)
-node ~/.agents/skills/jookoi-paper-trail/scripts/viewer/server.js remove <path>
-node ~/.agents/skills/jookoi-paper-trail/scripts/viewer/server.js list
-node ~/.agents/skills/jookoi-paper-trail/scripts/viewer/server.js               # foreground, Ctrl+C to stop
+node <skill dir>/scripts/viewer/server.js ensure        # start if needed, print the URL
+node <skill dir>/scripts/viewer/server.js ensure --open # and open the browser
+node <skill dir>/scripts/viewer/server.js add [path]    # register by hand (default: current repo)
+node <skill dir>/scripts/viewer/server.js remove <path>
+node <skill dir>/scripts/viewer/server.js list
+node <skill dir>/scripts/viewer/server.js               # foreground, Ctrl+C to stop
 ```
 
 The server only reads the architecture folders of registered repos and rejects requests whose `Host` header is not `127.0.0.1` or `localhost` on its port.

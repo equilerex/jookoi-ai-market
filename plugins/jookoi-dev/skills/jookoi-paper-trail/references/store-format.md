@@ -46,7 +46,7 @@ items:
 ## Commands
 
 ```
-node ~/.agents/skills/jookoi-paper-trail/scripts/jookoi-paper-trail.js <command> [--root <path>] [--private] [--dry-run]
+node <skill dir>/scripts/jookoi-paper-trail.js <command> [--root <path>] [--private] [--dry-run]
 ```
 
 Reads:

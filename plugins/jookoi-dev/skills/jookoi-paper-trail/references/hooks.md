@@ -16,7 +16,7 @@ The script detects the harness from the environment its shell inherits: `CLAUDEC
 
 ## Check and wire
 
-Read this when `sweep` or `hooks` reports missing hooks. Tell the user once, in one line, then:
+Read this when `sweep` or `hooks` reports missing hooks. Tell the user once, in one line, and ask whether to wire them. Do not edit any harness settings file, global or repo, without a yes in the current session. Step 1 is read-only. Steps 2 to 5 change files, so they run only after that yes:
 
 1. Run `hooks`. It reads the Claude Code settings (`~/.claude/settings*.json`, the repo's `.claude/settings*.json`), the Gemini files (`~/.gemini/`, the repo's `.gemini/`) and Copilot's `hooks.json`.
 2. If this session's harness shows `rehydrate` as `no` (or `sessionEnd` as `no`, which is optional), run `hooks --print` (or `hooks --print --harness=claude|gemini|copilot`) and merge the output into the target file it names. `--print` writes the commands with the path of the install that is running (`$HOME/.agents/...`, a plugin cache, anywhere), so use it rather than copying `hooks/config/*.json`, which assume `~/.agents`. Add to existing entries and never replace the file. Back it up, show the user the diff, and wait for approval: a global file changes every session on the machine.
@@ -77,7 +77,7 @@ Matching on the compaction source keeps a fresh startup from paying for a rehydr
 
 ## Registering
 
-The fragments in `hooks/config/` are ready to merge: `claude-code.json` into `~/.claude/settings.json`, `gemini.json` into `.gemini/hooks/hooks.json`, `copilot.json` into the repo's `hooks.json`. Each adds `SessionEnd` and drops the old end-of-turn entry. Commands point at `$HOME/.agents/skills/jookoi-paper-trail/hooks/`, the installed copy, never a path inside the repo.
+The fragments in `hooks/config/` are ready to merge: `claude-code.json` into `~/.claude/settings.json`, `gemini.json` into `.gemini/hooks/hooks.json`, `copilot.json` into the repo's `hooks.json`. Each adds `SessionEnd` and drops the old end-of-turn entry. The fragments assume the skill is installed at `$HOME/.agents/skills/jookoi-paper-trail/`. If it is installed anywhere else, use `hooks --print`, which writes the path of the running install.
 
 No hook on any harness can invoke a skill by name. The injected text has to stand on its own: the model does the actual edit.
 

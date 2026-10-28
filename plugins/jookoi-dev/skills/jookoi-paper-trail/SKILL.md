@@ -146,10 +146,10 @@ The test is audience, not secrecy. **Shared** (no prefix, committed) is what sta
 
 ## The script
 
-Run it from inside the target repo — it finds the root with `git rev-parse --show-toplevel`, else by walking up to a folder with `_architecture/`, so running it from the skill folder writes to the wrong place. `--root <path>` overrides. Paths are handled with Node's `path`, so the script runs the same on Windows and Unix. `~` expands in bash and zsh only. In PowerShell write `$HOME/.agents/skills/...` instead.
+Run it from inside the target repo — it finds the root with `git rev-parse --show-toplevel`, else by walking up to a folder with `_architecture/`, so running it from the skill folder writes to the wrong place. `--root <path>` overrides. Paths are handled with Node's `path`, so the script runs the same on Windows and Unix. Before running any command below, replace `<skill dir>` with the absolute path of the folder holding this SKILL.md. The install location varies: global folder, repo, or plugin cache.
 
 ```
-node ~/.agents/skills/jookoi-paper-trail/scripts/jookoi-paper-trail.js <command> [args] [--root <path>] [--private] [--dry-run]
+node <skill dir>/scripts/jookoi-paper-trail.js <command> [args] [--root <path>] [--private] [--dry-run]
 
 list [--status=S] [--stale=N]      now items + 3 latest done; or one status
 list --archived [--last N]          flushed items, newest first
@@ -189,7 +189,7 @@ No Node available? `references/pipeline.md` has the manual fallback.
 ## Session start, hooks, compaction
 
 - **Session start:** `list` (`now` items plus the 3 latest done), then `sweep`. `list --status=parked` when `now` is thin.
-- **Hooks** run at session boundaries, where the harness supports them: `SessionStart` shows the working set and surfaces unrecorded work and finished plans from the previous session, `PreCompact` and `SessionEnd` preserve raw notes. One end-of-turn reminder fires at most once per session, only when this session left a lot unrecorded or an open plan looks finished. Treat it as a reminder: record what matters, or finish if nothing needs recording. If `sweep` reports hooks missing or unsupported, follow `references/hooks.md`. Without them, `list` and `sweep` at session start are on you.
+- **Hooks** run at session boundaries, where the harness supports them: `SessionStart` shows the working set and surfaces unrecorded work and finished plans from the previous session, `PreCompact` and `SessionEnd` preserve raw notes. One end-of-turn reminder fires at most once per session, only when this session left a lot unrecorded or an open plan looks finished. Treat it as a reminder: record what matters, or finish if nothing needs recording. If `sweep` reports hooks missing or unsupported, tell the user and ask before wiring anything; follow `references/hooks.md` only on a yes. Without them, `list` and `sweep` at session start are on you.
 - **Compaction:** if you write the summary, keep a line saying jookoi-paper-trail is active in this repo and must be reloaded before the next write.
 
 ## Bundled assets

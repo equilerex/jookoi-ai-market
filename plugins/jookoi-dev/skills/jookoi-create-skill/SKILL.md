@@ -1,102 +1,170 @@
 ---
 name: jookoi-create-skill
-description: Create or adapt a personal, cross-harness agent skill when a reusable workflow belongs in .agents/skills, especially when preserving an existing skill while removing host-specific assumptions.
+description: Create, adapt, or validate a personal cross-harness Agent Skill (.agents/skills or plugin skills). Use when building a new skill, converting a workflow or existing skill into a portable SKILL.md package, or checking skill compliance against the Agent Skills specification.
 license: Apache-2.0
 metadata:
-  last_updated: 2026-09-23
+  last_updated: "2026-10-25T01:10:00Z"
   author: Joosep Kõivistik
   repository: https://github.com/equilerex/jookoi-ai-market
 ---
 
 # Personal skill creator
 
-<!-- Modified 2026-09-19 from the Apache-licensed skill-creator: retained its draft, test, review, and iteration workflow; replaced host-bound instructions with portable ones. -->
+<!-- Modified 2026-10-25 from the Apache-licensed skill-creator: aligned with the official Agent Skills specification and best practices; retained portable draft, validation, and optional benchmarking workflows. -->
 
-Build a skill for a demonstrated need. Start from the user's actual workflow and keep the result small enough that another agent will read it and act correctly. A `SKILL.md` is the portable core. Other files are optional support.
+Build or adapt an Agent Skill from real workflow expertise. Keep `SKILL.md` small, concrete, and portable across harnesses so an agent loads only what it needs and acts without guessing.
 
-## Personal defaults
+Read [references/spec-and-best-practices.md](references/spec-and-best-practices.md) when you need detailed frontmatter edge cases, instruction patterns, agentic script design rules, or description trigger optimization. Read [references/schemas.md](references/schemas.md) only when running an explicitly requested benchmark evaluation.
 
-- For a project skill, write `<repo>/.agents/skills/<name>/SKILL.md`. For a personal skill used across projects, write `~/.agents/skills/<name>/SKILL.md`. In this developer-stack repo, `my-global-setup/.agents/skills/` is the tracked copy of selected personal skills; copy a finished skill to the real global folder deliberately.
-- Use plain Markdown and YAML. Do not require a new binary, package, service, agent CLI, or model for the skill's normal operation. Add scripts only for repeated mechanical work that earns them.
-- Keep the common instructions independent of any one coding agent. Put host-specific metadata or invocation controls in optional files for the hosts that need them. Check a host's actual discovery and invocation behavior before claiming support for it.
-- Preserve existing user files and repo conventions. Make targeted edits; do not replace a skill wholesale for a small change. The user makes all git commits.
+## Contents
 
-## 1. Capture the job
+- [Scope and target path](#scope-and-target-path)
+- [1. Capture the job from real expertise](#1-capture-the-job-from-real-expertise)
+- [2. Structure for progressive disclosure](#2-structure-for-progressive-disclosure)
+- [3. Write frontmatter](#3-write-frontmatter)
+- [4. Write instructions and file references](#4-write-instructions-and-file-references)
+- [5. Bundle scripts only when earned](#5-bundle-scripts-only-when-earned)
+- [6. Verify and deliver](#6-verify-and-deliver)
+- [Optional benchmarking](#optional-benchmarking)
 
-Read the request and any existing skill first. Extract five things: when it should run, what input it receives, what action it takes, what it produces, and where it must stop. Use examples from the user's real workflow. Ask about a missing choice only when the answer changes the design. If the user wants an adaptation of an existing skill, copy its full package first, then track which parts are portable, which need an optional host adapter, and which are obsolete.
+---
 
-Check for overlap with nearby skills. A narrow, clear boundary in the description is more useful than a broad promise to handle everything. Keep the source of truth explicit when the skill has both a tracked copy and an installed copy.
+## Scope and target path
 
-## 2. Write the skill
+Classify the target location before writing any files:
 
-Every skill needs a folder named for its skill and a `SKILL.md` with YAML frontmatter:
+| Scope | Where to write | Rule |
+|---|---|---|
+| Explicit path given | Exact path the user named | Follow the user's path literally. |
+| Repository skill | `<repo>/.agents/skills/<name>/SKILL.md` | Default when modifying a target repository with no path specified. |
+| Personal / global skill | User-named global or tracked folder | Ask which folder if the user did not name one; never guess a global path or auto-copy across repos. |
+
+- 🎯 **Edit in place:** resolve the real repository root and write directly to the target folder unless isolation was requested.
+- 🛡️ **Never overwrite silently:** if the skill folder already exists, read it first, preserve unrelated files and license notices, and make targeted edits.
+
+---
+
+## 1. Capture the job from real expertise
+
+Skills built from generic LLM knowledge produce vague advice ("handle errors appropriately"). Ground every skill in concrete project or domain reality:
+
+1. **Extract from hands-on work or artifacts:** pull exact commands, API shapes, conventions, corrections made during a real session, runbooks, or historical fixes.
+2. **Define five boundaries:**
+   - **Trigger:** when the agent should load the skill (and nearby cases where it should *not*).
+   - **Inputs:** files, arguments, or context expected.
+   - **Procedure:** step-by-step actions or decision rules.
+   - **Outputs:** exact format, template, or side effect produced.
+   - **Stop condition:** validation gate or boundary where the skill hands back control.
+3. **Check adjacent skills:** keep each skill a coherent unit of work. If adapting an existing skill, copy its full folder first, then separate portable instructions from host-specific adapters.
+
+---
+
+## 2. Structure for progressive disclosure
+
+Agents load skills in three tiers:
+
+1. **Catalog (~50 to 100 tokens):** `name` and `description` loaded at session startup.
+2. **Instructions (< 5,000 tokens, < 500 lines):** full `SKILL.md` body loaded when activated.
+3. **Resources (on demand):** supporting files loaded only when `SKILL.md` directs the agent to read or run them.
+
+```text
+<skill-name>/
+├── SKILL.md          # Required: YAML frontmatter + core workflow (< 500 lines)
+├── references/       # Optional: detailed docs loaded on demand (flat, one level deep)
+├── scripts/          # Optional: non-interactive CLI helpers and validators
+└── assets/           # Optional: output templates, schemas, static lookups
+```
+
+Every path in a skill is relative to the skill root, the folder that holds `SKILL.md`. This applies to paths in `SKILL.md`, in `references/`, and in commands the agent runs from that root. A script that acts on the caller's current directory, such as one that finds the repo root from cwd, must be called by absolute path. Write `<skill dir>` in the command. Before running it, the agent replaces `<skill dir>` with the absolute path of the folder holding the installed `SKILL.md`. That location varies: a global folder, a repo, or a plugin cache.
+
+- ✂️ **No empty scaffolding:** create `references/`, `scripts/`, or `assets/` only when they hold real files.
+- 🧱 **Body stands alone:** some harnesses strip YAML frontmatter before injecting `SKILL.md`. Put all execution requirements inside the Markdown body.
+
+---
+
+## 3. Write frontmatter
+
+Every `SKILL.md` starts with YAML frontmatter enclosed by `---`:
 
 ```markdown
 ---
 name: example-skill
-description: Use when a specific recurring task needs this workflow.
+description: "Extract tables and form fields from PDF files. Use when the user asks to parse, fill, or merge PDFs."
+license: Apache-2.0
+metadata:
+  last_updated: "2026-10-25T00:00:00Z"
+  author: Example Author
+  repository: https://github.com/example/repo
 ---
-
-# Example skill
-
-Instructions that let the agent perform the task.
 ```
 
-The description is for selection: say when the skill applies and where its boundary is. It is injected into LLM discovery prompts, so every extra word costs tokens across all conversations. Default to one sentence, two at most, straight to the point, no conversational padding. The exception is a skill that must trigger on its own mid-task (documentation, memory, style, safety): there the description is the only signal that loads it, so list the events and user phrasings that should trigger it, up to the 1024-character limit. Background: `_architecture/plans/archived-decisions/015-skill-descriptions-carry-triggers-not-minimal-token-saving-s.md` in the developer-stack repo. Never include angle brackets (< or >) in name or description.
+| Field | Required | Constraints |
+|---|---|---|
+| `name` | Yes | 1 to 64 chars. Lowercase alphanumeric and single hyphens (`^[a-z0-9]+(-[a-z0-9]+)*$`). Must match the parent folder name exactly (NFKC normalized). No leading, trailing, or consecutive hyphens (`--`). Never use `claude`, `anthropic`, or `synced`. No `<` or `>`. |
+| `description` | Yes | 1 to 1,024 chars, non-empty. Imperative phrasing ("Use when..."). No `<` or `>`. Quote the string or use a YAML block scalar (`>` or `\|`) whenever it contains a colon (`:`). |
+| `license` | No | Short license identifier or reference to bundled `LICENSE.txt`. |
+| `compatibility` | No | Max 500 chars. Omit unless the skill requires specific system packages, runtimes, or network access. |
+| `metadata` | No | String-to-string map for `author`, `repository`, `last_updated`, or `version`. Kept out of initial discovery prompts in Claude Code. |
+| `allowed-tools` | No | Experimental space-separated tool list. Omit in portable cross-harness skills unless requested. |
 
-Frontmatter constraints:
-- `name`: 1 to 64 characters, lowercase alphanumeric and single hyphens (`^[a-z0-9]+(-[a-z0-9]+)*$`), matching the directory name. No consecutive hyphens (`--`). Never use reserved words `claude` or `anthropic`. The directory name cannot be `synced`.
-- Allowed top-level fields: `name`, `description`, `license`, `compatibility`, `metadata`. Never invent custom top-level keys.
-- Author-agnostic: instructions here remain author-agnostic. Do not hardcode specific personal author names or prefixes into the skill. Instead, discover naming conventions (such as personal prefixes) and author details from the target repository's `AGENTS.md`, environment instructions, or git config.
-- Non-LLM metadata: put credit, author, repository URL, version, and date inside the `metadata:` dictionary. Claude Code leaves `metadata:` out of initial tool discovery prompts, preserving tokens.
+- 🚫 **Never invent top-level keys:** only the six keys above are valid in `SKILL.md`. Put host-specific config in optional adapter files (such as `agents/openai.yaml`) after verifying the host's rules.
+- 🔍 **Discover local conventions:** check the target repo's `AGENTS.md` or git config for required skill prefixes (such as `jookoi-`) and `metadata` fields rather than hardcoding personal defaults.
+- 🎯 **Size `description` by invocation:**
+  - *On-request skills:* 1 to 2 direct sentences stating what the skill does and when to use it.
+  - *Self-triggering skills* (memory, docs, style, safety that must fire mid-task without the user naming the skill): list the specific events and user phrasings that trigger it, up to 1,024 characters.
 
-Keep `SKILL.md` usable on its own. Put long or rarely needed material in `references/`, reusable mechanical helpers in `scripts/`, and output templates in `assets/`. Link each resource at the point where it becomes useful. Do not create empty scaffolding or require every resource to load on every invocation.
+---
 
-When a host needs extra metadata, add it as an optional adapter without making the portable core depend on it. A host's slash command, skill picker, implicit triggering, and policy files are separate behaviors, so verify each one you promise. Do not force a host-only frontmatter key into the shared file if another host rejects it.
+## 4. Write instructions and file references
 
-## 3. Verify the draft
+> [!WARNING]
+> **Two rules agents violate most often:**
+> 1. **Write root-relative paths without a leading `./` or `../`:** `references/guide.md` and `scripts/run.py`. Even inside `references/guide.md`, shell commands invoke `python scripts/run.py`, not a path relative to that file.
+> 2. **Keep references strictly one level deep from `SKILL.md`.** `SKILL.md` links directly to `references/<file>.md`. Never create subdirectories inside `references/`, and never chain `references/a.md` to `references/b.md`.
 
-By default, create the skill to the best of your ability, validate its frontmatter and referenced paths, and inspect its instructions against the user's example. Do not run prompt suites, baselines, grading, or benchmarks unless the user explicitly requests them. For a complex or frequently used skill, you may suggest benchmarking after delivering the usable skill; the suggestion must not delay delivery.
+Follow these instruction design rules (details in [references/spec-and-best-practices.md](references/spec-and-best-practices.md#instruction-design-patterns)):
+
+- **Add what the agent lacks, omit what it knows:** cut textbook explanations. Ask of every line: *Would the agent get this wrong without this instruction?* If no, delete it.
+- **Attach a "when to read" condition to every reference link:** write `Read [references/api-errors.md](references/api-errors.md) if the API returns a non-200 status`, never a bare `See references/ for details`.
+- **Match specificity to fragility:** give goals and explain *why* when multiple approaches work; give exact commands and flags when an operation is fragile or stateful.
+- **One default with escape hatches:** pick one recommended tool or path and note the fallback in one line instead of offering a menu of options.
+- **Put a `## Gotchas` section in `SKILL.md`:** keep non-obvious traps in `SKILL.md` where the agent sees them before making the mistake.
+- **Use concrete templates and validation loops:** provide an inline or `assets/` template for structured outputs, and instruct the agent to run a validator or checklist and fix errors before finishing.
+
+---
+
+## 5. Bundle scripts only when earned
+
+Prefer plain Markdown instructions first. For standard ecosystem tools, use pinned one-off commands (`npx eslint@9.0.0`, `uvx ruff@0.8.0`). Add a script in `scripts/` only when mechanical work is repeated across runs or a command is too error-prone to compose inline.
+
+When writing a bundled script (full rules in [references/spec-and-best-practices.md](references/spec-and-best-practices.md#bundling-and-designing-scripts)):
+
+- **Zero interactive prompts:** agents run in non-interactive shells and hang on TTY prompts. Require all inputs via flags, env vars, or stdin.
+- **Self-contained dependencies:** use PEP 723 inline `# /// script` headers for Python (`uv run scripts/tool.py`) or `npm:`/`jsr:` specifiers for Deno/Bun so no separate install step is needed.
+- **Agent-friendly I/O:** support `--help`, emit structured output (JSON/CSV) to `stdout`, send diagnostics to `stderr`, cap output size, and write error messages that state what was expected and how to fix the call.
+
+---
+
+## 6. Verify and deliver
+
+Default verification is lightweight and runs on every skill creation or edit. Do not run prompt suites, subagent grading, or benchmark loops unless the user explicitly asks for benchmarking.
+
+- [ ] **Run the validator:** execute `python scripts/quick_validate.py <path/to/skill-folder>` (from this skill's directory) to verify frontmatter keys, naming rules, line budget, root-relative links, and one-level reference depth.
+- [ ] **Run repo checks if applicable:** if the target repo defines its own skill audit command in `AGENTS.md` (for example `npm run update-skills`), run it or follow its cross-reference checklist.
+- [ ] **Test bundled scripts:** if you added or edited a script in `scripts/`, run it with `--help` and one real or dry-run input.
+- [ ] **Check trigger clarity:** read the `description` against one realistic prompt that should trigger the skill and one near-miss prompt that should not.
+- [ ] **Package only on request:** run `python scripts/package_skill.py <path/to/skill-folder>` only when the user asks for a distributable `.skill` archive.
+
+Report the written path, what changed, what validation ran, and any host-specific caveats.
+
+---
 
 ## Optional benchmarking
 
-Run this only when the user asks to benchmark or optimize a skill. Use several realistic cases, including an edge case and a negative trigger case. Run cases in an isolated workspace when they could write files. For a comparison, run the same cases with and without the skill when the active harness supports independent runs. Record the prompt, observed action, final artifact, and unexpected side effects. If independent runs are unavailable, test sequentially and say so; do not present that as a controlled comparison.
+Run this workflow **only** when the user explicitly asks to evaluate, benchmark, or optimize a skill across test prompts.
 
-Use `agents/grader.md` and `agents/analyzer.md` when grading is useful; `references/schemas.md` describes the optional result format. For a human review pass, `eval-viewer/generate_review.py <workspace> --static <output.html>` produces a standalone page. `scripts/aggregate_benchmark.py <workspace> --skill-name <name>` summarizes structured grading results. These tools do not run by default.
-
-## 4. Revise and deliver
-
-Review actual failures before editing. Fix the smallest cause: a missed trigger, an unclear boundary, a missing step, a bad example, or a helper that does not work. Re-run only the cases affected by that change. Do not grow the skill to cover hypothetical cases.
-
-For existing skills, preserve useful behavior and bundled resources while removing stale assumptions. If a feature cannot be made portable without building a new integration, say which feature is host-bound and keep the rest of the skill usable. Preserve license and attribution files when adapting a licensed package; mark modified files as required by that license.
-
-Validate the finished folder with `scripts/quick_validate.py <skill-folder>` when Python and its dependencies are available, or an available host validator. Check links and run bundled scripts only when their behavior matters to the requested skill. Package with `scripts/package_skill.py <skill-folder>` only when the user needs a distributable archive.
-
-Report the source location, installed location if different, what changed from the source, what was tested, and any unverified host behavior. Do not commit, publish, or install outside the requested scope.
-## Personal defaults and verification
-
-- Write project skills to `<repo>/.agents/skills/<name>/SKILL.md`. Write personal skills to the host's configured global skill directory; on this computer that is `C:\Users\Joosep\.agents\skills\<name>\SKILL.md`. The tracked copy in this repository is `my-global-setup/.agents/skills/`; copy it deliberately when installing or updating the personal skill.
-- Resolve the actual repository root before editing. Edit the real file directly on the user's machine unless isolation was requested; never silently substitute a temporary workspace.
-- Keep `SKILL.md` portable across harnesses. Put host-specific metadata or invocation behavior in optional adapter files such as `agents/openai.yaml`; check the target host's discovery rules before adding one.
-- Default verification is lightweight: validate frontmatter and `name`/`description`, check every referenced local path, run `scripts/quick_validate.py` when bundled, and read the skill against one realistic trigger and one nearby non-trigger. Do not run prompt suites, grading, or benchmarks unless explicitly requested.
-
-Benchmarking is an explicit mode, never the default. The bundled benchmark scripts, evaluator guidance, and viewer are optional support and should not be loaded in normal creation mode. If benchmarking is requested, include realistic edge and negative cases, isolate the runs from production files, record prompts/actions/artifacts/side effects, and state limits on any comparison. The viewer may use external browser assets, so invoke it only for an explicitly requested evaluation workflow.
-## Where the skill goes
-
-Write the skill folder where the user says. Without a stated location, write it to the target repository's `.agents/skills/<name>/`. Create the folder with `SKILL.md` and any bundled files, and report the path it was written to. Do not link, copy or publish it anywhere else. Copying to other folders is a separate step the user asks for later.
-
-Never overwrite an existing skill silently: inspect it, preserve unrelated files, and report what was replaced.
-
-## Scope decision
-
-Use these terms literally:
-
-- **Target repository** is the repository the user is currently asking to modify.
-- **Personal skill** is a skill the user wants outside the target repository.
-
-Classify the requested skill before choosing a folder:
-
-- **Repository skill**: write to the target repository's `.agents/skills/<name>/`.
-- **Personal skill**: write to the folder the user names. If the user names none, ask for it. Do not guess a global folder.
-
-If the user names a scope, follow it.
+1. Define 2 to 3 realistic test prompts (plus an edge case and a near-miss negative case for trigger testing) in `evals/evals.json` following [references/schemas.md](references/schemas.md).
+2. Run each case in an isolated workspace with and without the skill (or against a snapshot of the prior version). Record prompts, outputs, `timing.json`, and side effects. If the harness cannot run isolated subagents, run sequentially and state that limitation plainly.
+3. Grade assertions with `agents/grader.md`, aggregate statistics with `python scripts/aggregate_benchmark.py <workspace> --skill-name <name>`, and optionally compare blind outputs with `agents/comparator.md` and `agents/analyzer.md`.
+4. To generate a standalone human review page, run `python eval-viewer/generate_review.py <workspace> --static <output.html>`.
+5. Fix the smallest root cause revealed by failed assertions or execution transcripts, generalize the instruction rather than patching for one prompt, and re-run affected cases.
